@@ -121,20 +121,26 @@ class Route:
     payload: str = ""       # raw tool results from the previous step (already wrapped as data)
 
 
-def payload_from(tool_results) -> str:
-    """Raw results of read tools, joined, to pass to the next agent. tool_results is a list of
-    {"name": ..., "result": ...}. Errors and results of other tools are left out. Whole results
-    only, up to MAX_PAYLOAD_CHARS, so a wrapped document is never cut in the middle."""
-    parts, total = [], 0
+def _eligible_texts(tool_results):
+    """The text of each read-tool result that may be passed on. Errors and other tools are left out."""
     for r in tool_results:
         text = str(r.get("result", ""))
-        if r.get("name") not in HANDOFF_SOURCE_TOOLS or not text.strip() or text.startswith("Error"):
-            continue
-        if total + len(text) > MAX_PAYLOAD_CHARS:
-            break
-        parts.append(text)
-        total += len(text)
-    return "\n\n".join(parts)
+        if r.get("name") in HANDOFF_SOURCE_TOOLS and text.strip() and not text.startswith("Error"):
+            yield text
+
+
+def payload_from(tool_results) -> str:
+    """Raw results of read tools, joined, to pass to the next agent. All or nothing: if the joined
+    text is longer than MAX_PAYLOAD_CHARS, returns "" so a note is never saved from partial data.
+    The app shows a warning in that case (see payload_too_long)."""
+    joined = "\n\n".join(_eligible_texts(tool_results))
+    return "" if len(joined) > MAX_PAYLOAD_CHARS else joined
+
+
+def payload_too_long(tool_results) -> bool:
+    """True when read-tool results exist but are too long to pass on in one note."""
+    joined = "\n\n".join(_eligible_texts(tool_results))
+    return len(joined) > MAX_PAYLOAD_CHARS
 
 
 def save_note_events(agent, route: Route, name: str):

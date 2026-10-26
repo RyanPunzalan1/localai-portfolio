@@ -428,7 +428,7 @@ with st.sidebar:
         st.caption(f"{n_chunks} chunks indexed")
         if failed_files:
             for f in failed_files:
-                st.caption(f)
+                st.caption(clean_output(f))
         if st.button("Re-index documents", icon=":material/refresh:", use_container_width=True):
             init_rag.clear()
             st.rerun()
@@ -667,6 +667,9 @@ with tab_chat:
                             st.rerun()
                         except brain.HandoffError as e:
                             st.error(escape(str(e)))
+        elif options and brain.payload_too_long(last["results"]):
+            st.warning("The data from the last step is too long to pass on in one note, so nothing was saved. "
+                       "Open the file directly, or ask for a shorter request.")
 
     approved = ss.pop("approved_route", None)
     if approved is not None:
