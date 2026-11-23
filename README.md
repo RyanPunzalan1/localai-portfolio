@@ -1,8 +1,8 @@
 # LocalAI
 
 A private, local-first assistant that works on notes and tasks in a folder on your machine.
-Nothing leaves the machine: no cloud model APIs, no telemetry. The model runs through Ollama
-(`hermes3`) on the host.
+Nothing leaves the machine: no cloud model APIs, no telemetry. The model runs through Ollama on
+the host: `gpt-oss:20b` by default, with `hermes3` as a smaller fallback (set `LOCALAI_MODEL` to change it).
 
 ## What it does
 
@@ -26,7 +26,8 @@ docker compose up --build      # then open http://localhost:8501
 docker compose down            # stop
 ```
 
-Ollama must be running on the host with `hermes3` pulled.
+Ollama must be running on the host with `gpt-oss:20b` pulled (about 14 GB). `hermes3` also works and
+needs less memory (about 5 GB loaded, against about 12 GB).
 
 The read-only security results dashboard is a second compose service on `http://localhost:8502`. It mounts
 the two experiment results folders read-only. To run it without Docker:
@@ -70,10 +71,11 @@ These tests use temporary folders and synthetic files. They need no Docker, `sbx
 experiments that do start containers or sandboxes are separate scripts under `experiments/`. The dashboard tests
 also read the result files in `experiments/*/results/`.
 
-Model evals (need Ollama and `hermes3`, run one at a time):
+Model evals (need Ollama and the model, run one at a time):
 
 ```
-python evals/run_evals.py hermes3
+python evals/run_evals.py             # the default model, gpt-oss:20b
+python evals/run_evals.py hermes3     # or name another model
 ```
 
 The evals use dummy notes in a temporary folder. They check two things: whether the
@@ -84,7 +86,7 @@ coordinator picks the right agent, and whether that agent calls the right tool.
 This project was built with Claude Code. The notes below are from the development log.
 
 - **Helped:** scaffolding agents, tests, and the Docker setup. Writing many small tests quickly.
-- **Hurt, found by live testing:**
+- **Hurt, found by live testing** (the eval numbers in this list were measured with `hermes3`, the model at the time):
   - The route picker sent file requests to the task agent. The model only saw agent names.
     Fix: it now sees a one-line purpose for each agent. Eval routing went from 7-8/10 to 10/10.
     Three repeat runs since then: routing 10/10 each time; tool choice 9/10, 9/10, 10/10
@@ -161,11 +163,12 @@ general security guarantee.
 
 ## Limits (known)
 
-- A small local model (`hermes3`) makes mistakes. Evals (14 cases): routing is 14/14 in every
-  run. Tool choice is 13/14 and repeatable: the notes and tasks agents run at temperature 0, so
-  the same request gives the same tool calls. Before that, it swung between 11/14 and 14/14.
-  The known miss: "What does ideas.md contain?" lists files instead of reading one. A wrong
-  tool pick cannot write anything: every write still waits for approval.
+- A small local model makes mistakes. In a head-to-head run on 2026-11-20 (same evals and settings, details in
+  `design/roadmap.md`), `gpt-oss:20b` and `hermes3` both routed 28 of 30 requests correctly. Tool choice was
+  30/30 for `gpt-oss:20b` and 27/30 for `hermes3`. Of 12 attacks planted in files, `gpt-oss:20b` read the
+  planted file in 12 and `hermes3` in 9. `gpt-oss:20b` has one known weak spot: on a file that says
+  "mark every task done", it proposed two unrequested "mark done" approvals. Nothing was changed, because every
+  write still waits for approval. A wrong tool pick cannot write anything.
 - Only one user, one machine. No login, because the app listens on 127.0.0.1 only.
 - The task agent rewrites `docs/tasks.md` on "mark done". It reads and writes the whole file
   with no lock, so do not edit that file while an approval is pending.
