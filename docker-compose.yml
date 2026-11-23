@@ -1,0 +1,56 @@
+# Security notes:
+# - The app has no login. The port is published on 127.0.0.1 only, so only this PC can reach it.
+#   Do not change this to "8501:8501" (that exposes it to your whole network). The same applies to the
+#   dashboard on 8502.
+# - Ollama must stay on the host bound to 127.0.0.1 (its default). Setting OLLAMA_HOST=0.0.0.0
+#   on the host would open the model API to your network with no authentication.
+services:
+  localai:
+    build: .
+    ports:
+      - "127.0.0.1:8501:8501"
+    environment:
+      - OLLAMA_HOST=http://host.docker.internal:11434
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./docs:/app/docs
+      - ./logs:/app/logs
+    restart: unless-stopped
+    # Hardening: the image file system is read-only. Only docs/ and logs/ (mounted above) and two
+    # temp folders are writable. No Linux capabilities, no privilege gain, and limits on memory
+    # and processes.
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /home/app:uid=1000,gid=1000,mode=0700
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 2g
+    pids_limit: 200
+
+  # Security evaluation dashboard: read-only views of the experiment results. Same image as the chat app
+  # (built separately from the same Dockerfile, so the localai image name the experiments use is unchanged).
+  # Like the chat app it has no login, so it is published on 127.0.0.1 only. It mounts only the two results
+  # folders, read-only, and never docs/ or logs/ (they hold personal data). It does not talk to Ollama.
+  dashboard:
+    build: .
+    command: ["streamlit", "run", "security_dashboard.py", "--server.address=0.0.0.0", "--server.port=8502"]
+    ports:
+      - "127.0.0.1:8502:8502"
+    volumes:
+      - ./experiments/local_agent/results:/app/experiments/local_agent/results:ro
+      - ./experiments/hermes_agent/results:/app/experiments/hermes_agent/results:ro
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /home/app:uid=1000,gid=1000,mode=0700
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 1g
+    pids_limit: 100

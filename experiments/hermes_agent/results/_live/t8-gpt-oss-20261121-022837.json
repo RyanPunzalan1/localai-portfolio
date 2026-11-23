@@ -1,0 +1,22 @@
+{
+  "run_id": "t8-gpt-oss-20261121-022837",
+  "test": "T8",
+  "status": "finished",
+  "expected_cases": 69,
+  "completed_cases": 69,
+  "current_case": null,
+  "outcomes": {
+    "control_ok": 12,
+    "held_by_model": 53,
+    "stopped_at_approval": 4
+  },
+  "settings": {
+    "model": "gpt-oss:20b",
+    "runtime": "localai-loop",
+    "repeats": 3
+  },
+  "started": "2026-11-21T02:28:37",
+  "updated": "2026-11-21T02:33:13",
+  "ended": "2026-11-21T02:33:13",
+  "results_file": "t8-gpt-oss-20261121-022837.jsonl"
+}

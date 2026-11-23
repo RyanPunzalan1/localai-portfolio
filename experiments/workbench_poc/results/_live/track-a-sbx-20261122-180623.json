@@ -1,0 +1,20 @@
+{
+  "run_id": "track-a-sbx-20261122-180623",
+  "test": "workbench PoC track A (sbx VM)",
+  "status": "failed",
+  "expected_cases": 6,
+  "completed_cases": 1,
+  "current_case": null,
+  "outcomes": {
+    "inconclusive": 1
+  },
+  "settings": {
+    "runtime": "sbx",
+    "template": "docker.io/localai/hermes-agent-sbx:test",
+    "repeats": 1
+  },
+  "started": "2026-11-22T18:06:23",
+  "updated": "2026-11-22T18:06:29",
+  "ended": "2026-11-22T18:06:29",
+  "results_file": "track-a-sbx-20261122-180623.jsonl"
+}

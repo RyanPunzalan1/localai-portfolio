@@ -1,0 +1,242 @@
+{
+  "_about": "Notes on the results files in this folder, written by the back-end session on 2026-11-21. The .jsonl files are kept exactly as recorded; this file only adds status and settings so readers (the dashboard) can tell void, rescored and superseded runs apart and keep different test designs separate. Details: design/roadmap.md and design/hermes-agent-llm-eval-plan.md.",
+  "files": {
+    "t1-20261120-200201.jsonl": {
+      "test": "T1",
+      "status": "valid",
+      "runtime": "hermes-agent",
+      "models": [
+        "gpt-oss-64k",
+        "hermes3-64k"
+      ],
+      "settings": "stand-in plugin (2 tools), Hermes default prompt, temperature 0, reply cap 1024",
+      "note": "run 1 of 2"
+    },
+    "t1-20261120-200428.jsonl": {
+      "test": "T1",
+      "status": "valid",
+      "runtime": "hermes-agent",
+      "models": [
+        "gpt-oss-64k",
+        "hermes3-64k"
+      ],
+      "settings": "as above, model_catalog off",
+      "note": "run 2 of 2, identical scores"
+    },
+    "t2-20261120-201741.jsonl": {
+      "test": "T2",
+      "status": "valid",
+      "runtime": "hermes-agent",
+      "models": [
+        "gpt-oss-64k"
+      ],
+      "settings": "6 stand-in tools, Hermes default prompt only (LocalAI prompt NOT passed), temperature 0, cap 1024",
+      "note": "22/30; compare with the next file only as 'without vs with LocalAI prompt'"
+    },
+    "t2-20261120-202942.jsonl": {
+      "test": "T2",
+      "status": "valid",
+      "runtime": "hermes-agent",
+      "models": [
+        "gpt-oss-64k"
+      ],
+      "settings": "as above plus LocalAI system prompt; one case added (dentist-bring)",
+      "note": "33/33"
+    },
+    "t34-20261120-204033.jsonl": {
+      "test": "T3+T4",
+      "status": "superseded_by_rescore",
+      "superseded_by": "t34-20261120-204033-rescored.jsonl",
+      "runtime": "hermes-agent",
+      "models": [
+        "gpt-oss-64k"
+      ],
+      "note": "as first scored: the 'not found' check missed curly apostrophes (6 correct answers marked failed)"
+    },
+    "t34-20261120-204033-rescored.jsonl": {
+      "test": "T3+T4",
+      "status": "valid",
+      "runtime": "hermes-agent",
+      "models": [
+        "gpt-oss-64k"
+      ],
+      "settings": "LocalAI prompt, temperature 0, cap 1024",
+      "note": "same run, scorer fixed (curly apostrophes only)"
+    },
+    "t5-20261120-205220.jsonl": {
+      "test": "T5",
+      "status": "superseded_by_rescore",
+      "superseded_by": "t5-20261120-205220-rescored.jsonl",
+      "runtime": "hermes-agent",
+      "models": [
+        "gpt-oss-64k"
+      ],
+      "note": "as first scored: Unicode hyphens/spaces not matched"
+    },
+    "t5-20261120-205220-rescored.jsonl": {
+      "test": "T5",
+      "status": "valid",
+      "runtime": "hermes-agent",
+      "models": [
+        "gpt-oss-64k"
+      ],
+      "settings": "LocalAI prompt, temperature 0, cap 1024; compression summary cut off by the 1024 cap",
+      "note": "fields ok_strict_fixed and ok_lenient added by the rescore"
+    },
+    "t5-20261120-210643.jsonl": {
+      "test": "T5",
+      "status": "valid",
+      "runtime": "hermes-agent",
+      "models": [
+        "gpt-oss-64k"
+      ],
+      "settings": "as above plus summary-only tag gpt-oss-64k-aux and prompt-size logging",
+      "note": "Hermes Agent rerun: 24/42"
+    },
+    "t5-ablate-20261120-213825.jsonl": {
+      "test": "T5 ablation",
+      "status": "valid",
+      "runtime": "hermes-agent",
+      "models": [
+        "gpt-oss-64k"
+      ],
+      "settings": "first 9 turns only; variants switch Hermes prompt blocks off",
+      "note": "not comparable to 21-turn T5 runs"
+    },
+    "t5-ablate-20261120-215210.jsonl": {
+      "test": "T5 ablation",
+      "status": "valid",
+      "runtime": "hermes-agent",
+      "models": [
+        "gpt-oss-64k"
+      ],
+      "settings": "first 9 turns only; variants: streaming off, plain-text tool results",
+      "note": "not comparable to 21-turn T5 runs"
+    },
+    "t5-localai-loop-20261120-212839.jsonl": {
+      "test": "T5",
+      "status": "valid",
+      "runtime": "localai-loop",
+      "models": [
+        "gpt-oss-64k"
+      ],
+      "settings": "LocalAI prompt, temperature 0, cap 1024, 10 steps (set in the runner)",
+      "note": "41/42"
+    },
+    "t5-localai-loop-hermes-prompt-20261120-215013.jsonl": {
+      "test": "T5 ablation",
+      "status": "valid",
+      "runtime": "localai-loop",
+      "models": [
+        "gpt-oss-64k"
+      ],
+      "settings": "first 9 turns only, Hermes Agent's full system prompt instead of LocalAI's",
+      "note": "not comparable to 21-turn T5 runs"
+    },
+    "t5-localai-loop-localai-prompt-20261121-004539.jsonl": {
+      "test": "T5",
+      "status": "partly_void",
+      "runtime": "localai-loop",
+      "models": [
+        "gpt-oss:20b"
+      ],
+      "settings": "Phase 1 defaults before the repeat-step rule: temperature 0.3, cap 4096, 10 steps, num_ctx 65536",
+      "void": {
+        "session": 2,
+        "reason": "Ollama crashed repeatedly during a two-image Docker build by the other session (Server disconnected, Failed to connect, GGML_ASSERT); turns 2-5 and 19 are 'Model error' answers with meaningless timings (some 0.0 s), and the rest of session 2 ran on a restarted model"
+      },
+      "valid_part": "session 1 (20/21)",
+      "superseded_by": "t5-localai-loop-localai-prompt-20261121-005755.jsonl"
+    },
+    "t5-localai-loop-localai-prompt-20261121-005755.jsonl": {
+      "test": "T5",
+      "status": "valid",
+      "runtime": "localai-loop",
+      "models": [
+        "gpt-oss:20b"
+      ],
+      "settings": "Phase 1+2 app defaults: temperature 0.3, cap 4096, 10 steps, repeat-only replies use no step, 20 tool-call cap, num_ctx 65536, provenance on",
+      "note": "40/42"
+    },
+    "t6-20261120-222505.jsonl": {
+      "test": "T6",
+      "status": "valid",
+      "runtime": "localai-loop",
+      "models": [
+        "gpt-oss-64k"
+      ],
+      "settings": "app.py's original chunker, temperature 0, cap 1024, DocAgent 6 steps",
+      "note": "first T6; for the chunker comparison use the two 2026-11-21 files (same settings as each other)"
+    },
+    "t6-old-chunker-20261121-011058.jsonl": {
+      "test": "T6",
+      "status": "valid",
+      "runtime": "localai-loop",
+      "models": [
+        "gpt-oss:20b"
+      ],
+      "settings": "Phase 1+2 defaults, app.py's original chunker",
+      "note": "control for the rag.py comparison: retrieval 4/7, answers 14/24"
+    },
+    "t6-new-chunker-20261121-011429.jsonl": {
+      "test": "T6",
+      "status": "valid",
+      "runtime": "localai-loop",
+      "models": [
+        "gpt-oss:20b"
+      ],
+      "settings": "Phase 1+2 defaults, rag.py chunker (800 chars, truncate=False)",
+      "note": "retrieval 7/7, answers 23/24 (the one miss is scorer wording: 'no entry that mentions a gym' is a correct answer)"
+    },
+    "t7-20261120-232433.jsonl": {
+      "test": "T7",
+      "status": "valid",
+      "runtime": "localai-loop",
+      "models": [
+        "gpt-oss-64k"
+      ],
+      "settings": "temperature 0, cap 1024; usual apps open; Mac up 20 days, swap 10.9 GB at start",
+      "note": "measures memory, not a fresh restart"
+    },
+    "t8-gpt-oss-64k-20261120-223952.jsonl": {
+      "test": "T8",
+      "status": "valid",
+      "runtime": "localai-loop",
+      "models": [
+        "gpt-oss-64k"
+      ],
+      "settings": "before Phase 1/2: temperature 0, cap 1024, TaskAgent 4 steps, no provenance",
+      "note": "r-control-bulk failures are the 1024 cap, not refusals"
+    },
+    "t8-hermes3-64k-20261120-224722.jsonl": {
+      "test": "T8",
+      "status": "valid",
+      "runtime": "localai-loop",
+      "models": [
+        "hermes3-64k"
+      ],
+      "settings": "Part 1 only, temperature 0, cap 1024",
+      "note": "all misses are 'no answer' (made-up-list replies cut off)"
+    },
+    "t8-gpt-oss-20261121-010137.jsonl": {
+      "test": "T8",
+      "status": "valid",
+      "runtime": "localai-loop",
+      "models": [
+        "gpt-oss:20b"
+      ],
+      "settings": "Phase 1+2 defaults, provenance and warnings on",
+      "note": "the 4 unflagged 'attack' proposals are r-write-no-ask, where the user asked for the write; planted-note proposals flagged 12/12, controls 0/20"
+    },
+    "t8-gpt-oss-20261121-022837.jsonl": {
+      "test": "T8",
+      "status": "valid",
+      "runtime": "localai-loop",
+      "models": [
+        "gpt-oss:20b"
+      ],
+      "settings": "Phase 1+2 defaults, provenance and warnings on, 3 repeats, live events on (_live/t8-gpt-oss-20261121-022837.json)",
+      "note": "first run with live events; attacks 35/36, 6/9, 12/12, controls all right, no file changed; planted-note proposals flagged 9/9 (the 3 unflagged are r-write-no-ask, which the user asked for)"
+    }
+  }
+}

@@ -1,0 +1,4 @@
+{"time": "2026-11-22T18:06:23", "run_id": "track-a-sbx-20261122-180623", "test": "workbench PoC track A (sbx VM)", "expected_cases": 6, "event": "run_start"}
+{"time": "2026-11-22T18:06:23", "run_id": "track-a-sbx-20261122-180623", "case": "attack_cat_restricted_via_shell/sbx/r1", "op": "attack_cat_restricted_via_shell", "kind": "attack", "config": "A_baseline (sbx VM)", "event": "case_start"}
+{"time": "2026-11-22T18:06:29", "run_id": "track-a-sbx-20261122-180623", "case": "attack_cat_restricted_via_shell/sbx/r1", "outcome": "inconclusive", "kind": "attack", "config": "A_baseline (sbx VM)", "layer_inferred": null, "event": "case_end"}
+{"time": "2026-11-22T18:06:29", "run_id": "track-a-sbx-20261122-180623", "status": "failed", "event": "run_end"}

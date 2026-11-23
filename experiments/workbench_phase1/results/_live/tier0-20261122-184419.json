@@ -1,0 +1,33 @@
+{
+  "run_id": "tier0-20261122-184419",
+  "test": "workbench Phase 1 Tier 0",
+  "status": "finished",
+  "expected_cases": 224,
+  "completed_cases": 224,
+  "current_case": null,
+  "outcomes": {
+    "permitted_succeeded": 12,
+    "permitted_blocked": 2,
+    "succeeded": 60,
+    "blocked": 80,
+    "benign_completed": 62,
+    "benign_false_positive": 8
+  },
+  "settings": {
+    "profiles": [
+      "A_baseline",
+      "B_docker_restricted",
+      "C_experiment_allowlist",
+      "I1_network_none_only",
+      "I2_no_restricted_mount_only",
+      "I3_read_only_root_only",
+      "L_existing_localai_tools"
+    ],
+    "network": "internal or none",
+    "repeats": 2
+  },
+  "started": "2026-11-22T18:44:19",
+  "updated": "2026-11-22T18:49:58",
+  "ended": "2026-11-22T18:49:58",
+  "results_file": "tier0-20261122-184419.jsonl"
+}

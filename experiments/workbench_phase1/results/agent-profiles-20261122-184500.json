@@ -1,0 +1,78 @@
+{
+  "time": "20261122-184500",
+  "docker-none": [
+    {
+      "check": "1 configuration (docker inspect)",
+      "ok": true,
+      "problems": []
+    },
+    {
+      "check": "2 preflight from inside",
+      "ok": true,
+      "problems": []
+    },
+    {
+      "check": "3 runtime record",
+      "ok": null,
+      "problems": [
+        "not available: Docker keeps no record of refused connections (design 5.2.6)"
+      ]
+    },
+    {
+      "check": "4a negative control: preflight sees a planted reachable target",
+      "ok": true,
+      "problems": []
+    },
+    {
+      "check": "4b negative control: config check flags a bridge container",
+      "ok": true,
+      "problems": []
+    }
+  ],
+  "sbx-deny-all": [
+    {
+      "check": "1a configuration (sandbox rules)",
+      "ok": true,
+      "problems": []
+    },
+    {
+      "check": "1b configuration (sbx policy check, 202 targets)",
+      "ok": true,
+      "problems": []
+    },
+    {
+      "check": "2 preflight from inside",
+      "ok": true,
+      "problems": []
+    },
+    {
+      "check": "3 runtime record (sbx policy log)",
+      "ok": true,
+      "problems": []
+    },
+    {
+      "check": "4a negative control: config check flags an allow rule",
+      "ok": true,
+      "problems": []
+    },
+    {
+      "check": "4b negative control: preflight sees the allowed target",
+      "ok": true,
+      "problems": []
+    },
+    {
+      "check": "4c negative control: log check flags the allowed connection",
+      "ok": true,
+      "problems": []
+    }
+  ],
+  "sbx_version": "sbx version v0.54.0 4bec4a5ce093466e54b034146965b143d065dc09",
+  "docker_version": "29.8.2",
+  "leftovers": {
+    "sbx": "No sandboxes found",
+    "docker_wb": [
+      "wb-t0-8135a30e",
+      "wb-sink-8135a30e"
+    ]
+  }
+}

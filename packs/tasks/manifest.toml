@@ -1,0 +1,29 @@
+# The tasks pack: design/packs.md, section 2. Read by packs_manifest.py.
+name = "tasks"
+agent = "TaskAgent"
+version = "0.1.0"
+api_version = 1
+purpose = "Only for the task list: add a task, show tasks, or mark a task done."
+prompt_file = "prompt.txt"
+
+[[tools]]
+name = "list_tasks"
+writes = false
+
+[[tools]]
+name = "add_task"
+writes = true
+
+[[tools]]
+name = "complete_task"
+writes = true
+
+[permissions]
+read = ["tasks.md"]
+write = ["tasks.md"]
+write_modes = ["append", "mark_done"]
+model = true
+
+[[handoffs]]
+to = "SaveNote"
+label = "Save as a note"

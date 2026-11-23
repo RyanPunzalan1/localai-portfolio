@@ -1,0 +1,27 @@
+{
+  "run_id": "track-a-20261122-180239",
+  "test": "workbench PoC track A",
+  "status": "finished",
+  "expected_cases": 48,
+  "completed_cases": 48,
+  "current_case": null,
+  "outcomes": {
+    "succeeded": 24,
+    "blocked": 16,
+    "benign_completed": 8
+  },
+  "settings": {
+    "profiles": [
+      "A_baseline",
+      "B_docker_restricted",
+      "I1_network_none_only",
+      "I2_no_restricted_mount_only"
+    ],
+    "network": "internal or none",
+    "repeats": 2
+  },
+  "started": "2026-11-22T18:02:39",
+  "updated": "2026-11-22T18:03:48",
+  "ended": "2026-11-22T18:03:48",
+  "results_file": "track-a-20261122-180239.jsonl"
+}

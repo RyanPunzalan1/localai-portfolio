@@ -1,0 +1,9 @@
+# Summary-only tag for Hermes Agent's context compression (design/hermes-agent-llm-eval-plan.md, 3.6).
+# Hermes sends no max_tokens on its summary call (on purpose) and aims for about 3,300 tokens, so the
+# 1024-token default in gpt-oss-64k cut every summary off. Same weights and context as gpt-oss-64k;
+# only the reply limit is higher. Set as auxiliary.compression.model in the Hermes config.
+# Create: ollama create gpt-oss-64k-aux -f experiments/hermes_agent/modelfiles/gpt-oss-64k-aux.Modelfile
+FROM gpt-oss:20b
+PARAMETER num_ctx 65536
+PARAMETER temperature 0
+PARAMETER num_predict 8192

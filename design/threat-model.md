@@ -32,14 +32,13 @@ The user is trusted. The user's approval click is the final control for any writ
 | Injected text in a file is read as instructions | File text is wrapped as data; a `<document>` tag inside a file is escaped so it cannot close the wrapper; prompts say file text is data | `safety.py` (`wrap_untrusted`), agent prompts | `test_security.py`, `test_code_agent.py` |
 | Model writes without the user knowing | Every write is staged in the approvals inbox and only happens on Approve; routes also need approval; new files use exclusive create (never overwrite); "mark done" changes only one exact line | `agent.py`, `task_agent.py`, `pending_store.py`, `app.py` | `test_tasks.py`, `test_pending.py`, `test_integration.py` |
 | Model asks for a path outside `docs/` | Names are reduced to a plain file name, only `.txt` and `.md`, no symlinks, no files with extra hard links, parent must be `docs/`; backslashes are treated as separators on every OS (a past real bug) | `safety.py`, `agent.py` (`_safe_path`) | `test_security.py`, `test_integration.py` |
-| Code review reads private files | Allowlist, not a deny list: top-level `*.py` except tests, `Dockerfile`, `requirements.txt`, `design/*.md`. Refuses `docs/`, `logs/`, `.env`, `chat_history.json`, absolute paths, `..`, symlinks. The agent has no write tool | `code_agent.py` | `test_code_agent.py` (40 tests) |
 | Model output leaks data through the browser | Markdown and HTML images are stripped (an image URL makes the browser fetch it); text put in HTML snippets is escaped | `safety.py` (`strip_images`, `escape`), `app.py` | `test_security.py` |
 | A second step copies data wrongly or writes something the user did not see | The "Save as a note" step is code, not a model: the data is unwrapped exactly, shown before approval, put in the approvals inbox through the same name checks, and refused if cut off or empty. The model cannot choose the step. At most two steps per request | `brain.py`, `safety.py`, `agent.py` | `test_brain.py`, `test_security.py`, `evals/run_handoff_evals.py` (5/5) |
 | Model output leaks data through a clickable link | Links are shown as plain text with the URL in a code span (`neutralize_links`, applied with the image stripping as `clean_output` at every place model text is shown as Markdown). A guard test fails if `app.py` shows model text without it | `safety.py`, `app.py` | `test_security.py` (`NeutralizeLinksTests`, with a property check); drawn in the real app headlessly |
 | Another machine reaches the app | Port is published on `127.0.0.1` only; Ollama stays on `127.0.0.1` on the host | `docker-compose.yml` | Not tested (configuration) |
 | Telemetry | No cloud model APIs and no HTTP client libraries in the project code. Two telemetry sources were **on by default** until 2026-10-10 and are now off: Streamlit usage statistics (`.streamlit/config.toml`, copied into the image) and ChromaDB anonymized telemetry (`Settings(anonymized_telemetry=False)` in `app.py` and `old/unified_agent.py`) | `.streamlit/config.toml`, `Dockerfile`, `app.py`, `old/unified_agent.py` | `test_security.py` (`NoTelemetryTests`; the ChromaDB test scans every client call and fails if one lacks the setting) |
 | Shell access | None. There is no tool that runs commands | whole app | By design |
-| Big inputs hang the app | Size caps on file reads and tool results; the code review has a page cap and a 300 s model timeout | `agent.py`, `code_agent.py` | `test_code_agent.py` |
+| Big inputs hang the app | Size caps on file reads and tool results | `agent.py` | `test_security.py` |
 | Container runs as root | Runs as an unprivileged user (uid 1000) | `Dockerfile` | Not tested |
 | Container compromise spreads | Read-only file system (only `docs/`, `logs/`, and two temp folders are writable), no Linux capabilities, no new privileges, memory and process limits | `docker-compose.yml` | Not tested; read from the file |
 | Private text ends up in logs | The activity log records lengths, not request text or tool arguments; log and inbox files are owner-only (0600); the log rotates at 1 MB | `brain.py`, `pending_store.py` | `tests/test_brain.py` (`LogRedactionTest`), `tests/test_pending.py` |
@@ -62,8 +61,7 @@ The user is trusted. The user's approval click is the final control for any writ
    type: requests and tool arguments are logged as lengths (commit 7c99a79, checked through the
    coordinator with dummy data on 2026-10-10), but file names and page numbers are kept. Both files are
    owner-only (0600) and gitignored.
-4. **The notes and tasks agent loop has no model timeout.** The code review call has a 300 s
-   timeout; `agent.py`'s chat call does not, so a hung model can freeze that request.
+4. **The notes and tasks agent loop has no model timeout.** The notes and tasks agents wait on the model without a time limit, so a hung model can stall the app.
 5. **"Mark done" rewrites `docs/tasks.md` with no lock.** Editing the file while a mark-done is
    pending can lose that edit.
 6. **The container can reach the internet.** Outbound network is not restricted, so a bad
@@ -116,7 +114,6 @@ policy was run locally and passed (exit code 0).
 
 ```
 python tests/test_security.py        # wrapper, paths, images, telemetry config
-python tests/test_code_agent.py      # code review allowlist and review checks
 python tests/test_integration.py     # approval flow end to end
 docker compose up --build -d   # rebuild so the telemetry setting is live
 ```

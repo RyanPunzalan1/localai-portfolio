@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git status)",
+      "Bash(.venv/bin/python -m unittest *)"
+    ],
+    "deny": [
+      "Read(./docs/**)",
+      "Read(./chat_history.json)",
+      "Edit(./docs/**)",
+      "Write(./docs/**)",
+      "Edit(./chat_history.json)",
+      "Write(./chat_history.json)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-writes.py\""
+          }
+        ]
+      }
+    ]
+  }
+}

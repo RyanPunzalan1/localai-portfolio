@@ -1,0 +1,7 @@
+# Test tag for the Hermes Agent evaluation (design/hermes-agent-llm-eval-plan.md, step 4).
+# Same weights as gpt-oss:20b; only the defaults below change. The base model is left as it is.
+# Create: ollama create gpt-oss-64k -f experiments/hermes_agent/modelfiles/gpt-oss-64k.Modelfile
+FROM gpt-oss:20b
+PARAMETER num_ctx 65536
+PARAMETER temperature 0
+PARAMETER num_predict 1024

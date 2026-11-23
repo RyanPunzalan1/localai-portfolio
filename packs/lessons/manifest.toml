@@ -1,0 +1,21 @@
+# The lessons pack: design/packs.md, section 2. Read by packs_manifest.py.
+name = "lessons"
+agent = "LessonsAgent"
+version = "0.1.0"
+api_version = 1
+purpose = "Saves and finds coding lessons: gotchas, commands, and decisions from past projects. Use it when the user wants to remember something about code, or asks what they learned."
+prompt_file = "prompt.txt"
+
+[[tools]]
+name = "save_lesson"
+writes = true
+
+[[tools]]
+name = "find_lessons"
+writes = false
+
+[permissions]
+read = ["lesson-*.md"]
+write = ["lesson-*.md"]
+write_modes = ["create"]
+model = true

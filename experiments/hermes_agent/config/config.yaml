@@ -1,0 +1,87 @@
+# Hermes Agent config for the LocalAI LLM test (design/hermes-agent-llm-eval-plan.md, sections 2.5 and 3).
+# Copied into $HERMES_HOME inside a locked-down sbx sandbox. Key names checked against
+# hermes_cli/config_defaults.py in Hermes Agent v0.23.3 (the pinned image).
+# The sandbox network lock-down (section 3.1) is the hard stop; these settings are the second layer.
+
+model:
+  provider: custom                      # local OpenAI-compatible endpoint (Ollama)
+  default: gpt-oss-64k                  # the runner passes -m for each model under test
+  base_url: http://host.docker.internal:11434/v1
+  api_key: no-key
+  # Same as num_ctx in the 64K Modelfiles. Stated so Hermes's compression threshold (75% of the
+  # window for models under 512K) matches what Ollama really holds, instead of a guessed window.
+  context_length: 65536
+
+fallback_providers: []                  # no cloud fallback (the default, stated on purpose)
+
+_config_version: 54                     # current schema for v0.23.3 (stops the migration warning)
+
+# The allowlist: the CLI gets only the smoke-test plugin's toolset. (`-t localai_smoke` on the
+# command line does not work: Hermes checks -t before plugins load and rejects the name.)
+platform_toolsets:
+  cli: [localai_smoke]
+
+# No agent.disabled_toolsets here on purpose: Hermes filters disabled tools by name, and the built-in
+# `file` toolset also has a `read_file`, so disabling it removed our read_file too (found 2026-11-20).
+# Instead the runner checks, before any case runs, that Hermes will send exactly list_files and
+# read_file, and stops if not.
+
+tools:
+  tool_search:
+    # Off: the model sees our tools directly, as in LocalAI's own loop. On ("auto", the default),
+    # Hermes hides plugin tools behind tool_search/tool_describe/tool_call, so list_files was not
+    # in the model's tool list at all (found 2026-11-20).
+    enabled: "off"
+
+memory:
+  memory_enabled: false                 # both off, or the memory tool stays
+  user_profile_enabled: false
+
+curator:
+  enabled: false
+
+approvals:
+  mode: manual                          # backstop only; no shell tools are loaded
+
+updates:
+  check: false                          # no GitHub update check
+
+model_catalog:
+  # On by default: downloads a model list from hermes-agent.nousresearch.com, falling back to
+  # raw.githubusercontent.com (hermes_cli/model_catalog.py). Seen blocked in the sandbox log.
+  enabled: false
+
+auth:
+  adopt_external_logins: false          # never borrow Claude Code or Codex logins
+
+telemetry:
+  shared_metrics:
+    enabled: false
+    send: false
+
+plugins:
+  enabled: [localai_smoke]
+  entries:
+    localai_smoke:
+      # Our tools keep LocalAI's names (list_files, read_file), which are also built-in Hermes tool
+      # names. Hermes refuses the plugin unless this is granted. The built-in file toolset is off.
+      allow_tool_override: true
+
+auxiliary:
+  background_review:
+    enabled: false                      # no background memory or skill writes
+  title_generation:
+    enabled: false
+    model_upgrade_enabled: false        # never call a model for session titles
+  compression:                          # long-run summaries stay on the local model
+    provider: custom
+    # Summary-only tag: same weights and context, 8192-token reply limit. Hermes sends no max_tokens
+    # on summary calls, and the 1024 limit in gpt-oss-64k cut every summary off (T5, 2026-11-20).
+    model: gpt-oss-64k-aux
+    base_url: http://host.docker.internal:11434/v1
+    api_key: no-key
+  approval:
+    provider: custom
+    model: gpt-oss-64k
+    base_url: http://host.docker.internal:11434/v1
+    api_key: no-key

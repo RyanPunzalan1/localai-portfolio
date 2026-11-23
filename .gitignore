@@ -1,0 +1,17 @@
+venv/
+.venv/
+docs/
+__pycache__/
+*.pyc
+chat_history.json
+.claude/settings.local.json
+.claude/logs/
+sample.txt
+logs/
+.DS_Store
+infra/.terraform/
+*.tfstate
+*.tfstate.backup
+infra/tfplan
+# Obsidian settings for the design/ vault (per-machine, not project content)
+design/.obsidian/

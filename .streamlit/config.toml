@@ -1,0 +1,3 @@
+# No telemetry (CLAUDE.md rule). Streamlit sends anonymous usage statistics by default.
+[browser]
+gatherUsageStats = false

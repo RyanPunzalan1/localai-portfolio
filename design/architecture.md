@@ -45,7 +45,6 @@ Where to look in the code:
 | Pack gateway | `packs_gateway.py` | The only way a pack reaches files, the inbox or the log; checks the manifest first |
 | Manifest checks | `packs_manifest.py` | Refuses unknown keys, bad names and bad permissions |
 | Pack loader | `packs_registry.py` | Loads every pack at startup; a bad pack shows a warning and the others still load |
-| Code review | `code_agent.py` | Read-only allowlist; the model's review is hints only |
 | Approvals inbox | `pending_store.py` | Pending writes saved to `logs/pending_writes.json` |
 | Safety helpers | `safety.py` | Name checks, `wrap_untrusted`, link and image cleanup |
 | Evals and tests | `evals/`, `tests/` | Routing, tool choice, handoff, recall, injection, held-out review |
@@ -236,7 +235,6 @@ Details and known gaps: design/threat-model.md.
 | File tools stay inside `docs/` | `tests/test_security.py` (path, symlink, hard link) | Tested |
 | Hostile note text does not trigger a write | `evals/run_injection_evals.py` | hermes3 only: 12 of 12 held, 9 of those reached the model |
 | Handoffs copy data faithfully | `evals/run_handoff_evals.py` | 5 of 5, no model |
-| The code review finds real bugs | `evals/run_review_real.py`, `evals/run_heldout_review.py` | **No.** 0 of 3 and 1 of 6, so it is hints only |
 | Packs follow the contract | Contract tests | **Proposed, not built** |
 
 ## Reading order for a new contributor

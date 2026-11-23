@@ -5,9 +5,10 @@ import ollama
 import chromadb
 from chromadb.config import Settings
 
+import approval_view
 import brain
-from agent import DocAgent, SYSTEM_PROMPT
-from code_agent import CODE_MODEL, list_allowed, review_code
+import rag
+from agent import FALLBACK_MODEL, MODEL as DEFAULT_MODEL, SYSTEM_PROMPT, DocAgent, chat_options
 from lesson_capture import MAX_LESSONS, stage_lessons
 from lessons import all_tags, filter_lessons, list_lessons
 from pending_store import PendingStore
@@ -18,7 +19,6 @@ DOCS_DIR = "docs"
 LOG_FILE = os.path.join("logs", "activity.jsonl")
 PENDING_FILE = os.path.join("logs", "pending_writes.json")
 PERSONA = "You are a secure, local-first personal AI assistant."
-EMBED_MODEL = "nomic-embed-text"
 
 st.set_page_config(page_title="Local AI", layout="wide")
 
@@ -203,6 +203,15 @@ label[data-selected="true"] > div:first-of-type {background-color: var(--accent)
 
 .approve {border: 1px solid var(--line); background: var(--panel); border-radius: var(--radius);
           padding: .7rem .9rem; margin: .5rem 0; font-size: .88rem;}
+/* Phase 2 reviewer warnings and provenance (display only; see approval_view.py) */
+.prov-warn {border: 1px solid #d97706; background: rgba(217,119,6,.13); border-radius: var(--radius);
+            padding: .6rem .9rem; margin: .4rem 0 .5rem; font-size: .86rem; color: var(--text);}
+.prov-warn ul {margin: .3rem 0 0 1.1rem; padding: 0;}
+.prov-warn li {margin: .1rem 0;}
+.prov-grid {display: grid; grid-template-columns: max-content 1fr; gap: .25rem .9rem; font-size: .84rem;}
+.prov-k {color: var(--muted);}
+.prov-v {font-family: ui-monospace, Menlo, monospace; font-size: .8rem; word-break: break-word;}
+.prov-note {color: var(--muted); font-size: .78rem; margin-top: .55rem;}
 .pill {display:inline-block; padding: 1px 7px; border-radius: 5px; font-size: .7rem;
        background: var(--raised); border: 1px solid var(--line); color: var(--accent);
        margin-right: 6px; font-family: ui-monospace, Menlo, monospace;}
@@ -276,19 +285,8 @@ st.markdown(f"<style>:root {{{PALETTES[st.session_state['theme']]}"
 
 
 # --------------------------------------------------------------------- RAG
-def chunk_text(text, size=800):
-    """Split on blank lines and merge into ~800 character chunks."""
-    out, cur = [], ""
-    for para in text.split("\n\n"):
-        if len(cur) + len(para) > size and cur:
-            out.append(cur.strip())
-            cur = ""
-        cur += para + "\n\n"
-    if cur.strip():
-        out.append(cur.strip())
-    return out
-
-
+# Chunking, embedding and search live in rag.py (Phase 3): chunks are bounded and embedded with
+# truncate=False, so no text past the embedding model's limit is silently dropped.
 @st.cache_resource
 def init_rag():
     client = chromadb.Client(Settings(anonymized_telemetry=False))
@@ -297,37 +295,12 @@ def init_rag():
     except Exception:
         pass
     col = client.create_collection(name="streamlit_docs")
-    chunks, failed = 0, []
-    if os.path.exists(DOCS_DIR):
-        for filename in sorted(os.listdir(DOCS_DIR)):
-            if not filename.lower().endswith((".txt", ".md")):
-                continue
-            if os.path.islink(os.path.join(DOCS_DIR, filename)):
-                continue  # never index through symlinks
-            try:
-                with open(os.path.join(DOCS_DIR, filename), "r", encoding="utf-8", errors="ignore") as f:
-                    content = f.read()
-                for i, piece in enumerate(chunk_text(content)):
-                    emb = ollama.embed(model=EMBED_MODEL, input=piece)["embeddings"][0]
-                    col.add(ids=[f"{filename}-{i}"], embeddings=[emb], documents=[piece],
-                            metadatas=[{"source": filename}])
-                    chunks += 1
-            except Exception as e:
-                failed.append(f"{filename}: {e}")
-    return col, chunks, failed
+    stats = rag.build_index(col, DOCS_DIR)
+    return col, stats["chunks"], stats["failed"]
 
 
 collection, n_chunks, failed_files = init_rag()
-
-
-def rag_search(query, n=3):
-    total = collection.count()
-    if total == 0:
-        return "No documents are indexed."
-    emb = ollama.embed(model=EMBED_MODEL, input=query)["embeddings"]
-    res = collection.query(query_embeddings=emb, n_results=min(n, total))
-    return "\n\n".join(f"[{m['source']}]\n{d}" for d, m in
-                       zip(res["documents"][0], res["metadatas"][0]))
+rag_search = rag.make_search(collection)
 
 
 # ------------------------------------------------------------------- state
@@ -358,7 +331,8 @@ if "coord" not in ss:
         ss["log"],
         # The model suggests an agent; the coordinator only accepts registered names.
         pick=brain.model_picker(lambda prompt: ollama.chat(
-            model=model, messages=[{"role": "user", "content": prompt}])["message"]["content"],
+            model=model, messages=[{"role": "user", "content": prompt}],
+            options=chat_options(model))["message"]["content"],
             purposes={"DocAgent": "Lists, reads, and saves note files. Use for any request about files or notes.",
                       **{name: entry["purpose"] for name, entry in registry_entries(ss["pack_agents"]).items()}}),
     )
@@ -416,10 +390,11 @@ with st.sidebar:
     with st.expander("Model", icon=":material/memory:"):
         choices = installed_models()
         if choices:
-            default = next((i for i, m in enumerate(choices) if m.startswith("hermes3")), 0)
+            default = next((i for i, m in enumerate(choices) if m.startswith(DEFAULT_MODEL)),
+                           next((i for i, m in enumerate(choices) if m.startswith(FALLBACK_MODEL)), 0))
             model = st.selectbox("Model", choices, index=default, help="Models installed in Ollama.")
         else:  # Ollama not reachable: let the name be typed
-            model = st.text_input("Model", value="hermes3")
+            model = st.text_input("Model", value=DEFAULT_MODEL)
             if not is_local_model(model):  # a cloud tag would send chats off this machine
                 st.error("Cloud models are not allowed. Pick a local model.")
                 st.stop()
@@ -467,11 +442,10 @@ for _folder, _message in ss.get("pack_errors", []):
     st.warning(f"Pack '{_folder}' was not loaded: {_message}")
 blocked_count = ss["log"].count("blocked")
 lesson_items = list_lessons(DOCS_DIR)  # read-only: the lesson-*.md files, for the Lessons tab
-tab_chat, tab_approve, tab_lessons, tab_review, tab_activity = st.tabs([
+tab_chat, tab_approve, tab_lessons, tab_activity = st.tabs([
     "Chat",
     f"Approvals ({len(agent.pending_writes)})",
     f"Lessons ({len(lesson_items)})",
-    "Code review",
     f"Activity ({blocked_count} blocked)" if blocked_count else "Activity",
 ])
 
@@ -490,8 +464,7 @@ with tab_chat:
     # Clicking a card only queues the text; it still goes through the normal route approval.
     cards = [(":material/folder_open:", "List my files", "What files do I have?"),
              (":material/description:", "Summarize notes", "Summarize my notes"),
-             (":material/checklist:", "Show my tasks", "Show my tasks"),
-             (":material/travel_explore:", "Explain RAG", "Explain how RAG works")]
+             (":material/checklist:", "Show my tasks", "Show my tasks")]
     for col, (icon, label, idea) in zip(st.columns(len(cards)), cards):
         if col.button(label, icon=icon, use_container_width=True, key=f"card_{label}"):
             ss["queued"] = idea
@@ -528,8 +501,17 @@ with tab_approve:
         for i, w in enumerate(list(agent.pending_writes)):
             st.markdown(f'<div class="approve">The agent wants to save <b>{escape(w["name"])}</b></div>',
                         unsafe_allow_html=True)
+            # Phase 2: reviewer warnings and what the agent saw. Display only; Approve below is unchanged.
+            warning_box = approval_view.warnings_html(w)
+            if warning_box:
+                st.markdown(warning_box, unsafe_allow_html=True)
             with st.expander("Preview", expanded=True):
                 st.code(w["content"], language="markdown")
+            seen = approval_view.provenance_html(w)
+            if seen:
+                with st.expander("What the agent saw before this proposal", icon=":material/visibility:",
+                                 expanded=bool(warning_box)):
+                    st.markdown(seen, unsafe_allow_html=True)
             a, b, _ = st.columns([1, 1, 4])
             if a.button("Approve", key=f"ok{i}", type="primary"):
                 result = agent.approve_write(i)
@@ -569,42 +551,11 @@ with tab_lessons:
         if not shown:
             st.info("No lesson matches that filter.")
 
-with tab_review:
-    st.caption("Read-only review of this project's code files. Pick a file and click Review. "
-               "Nothing is written. Files outside the allowed list cannot be chosen.")
-    st.warning("Hints only. This model often reports problems that are not there and misses real "
-               "ones. Check every point against the code yourself. Suggested fixes are not shown.")
-    files = list_allowed()
-    if not files:
-        st.info("No reviewable files found.")
-    else:
-        target = st.selectbox("File", files)
-        review_choices = installed_models() or [CODE_MODEL]
-        review_model = st.selectbox("Review model", review_choices,
-                                    index=review_choices.index(CODE_MODEL) if CODE_MODEL in review_choices else 0,
-                                    help="Defaults to the coder model that was tested for code review.")
-        if st.button("Review", type="primary"):
-            ss["log"].append({"event": "code_review_started", "agent": "CodeAgent",
-                              "target": target, "model": review_model})
-            with st.spinner(f"Reviewing {target} with {review_model}..."):
-                try:
-                    ss["review"] = (target, review_code(target, model=review_model))
-                    ss["log"].append({"event": "code_review_finished", "agent": "CodeAgent",
-                                      "target": target, "status": "ok"})
-                except ValueError as e:
-                    ss["review"] = (target, f"Refused: {e}")
-                    ss["log"].append({"event": "blocked", "agent": "CodeAgent", "tool": "review_code",
-                                      "target": target, "status": "blocked"})
-        if ss.get("review"):
-            name, text = ss["review"]
-            st.markdown(f"**{escape(name)}**")
-            st.markdown(clean_output(text))
-
 with tab_activity:
     st.caption("Newest first. Routing, approvals, tool calls, and blocked actions.")
     kinds = ["all", "route_proposed", "route_approved", "route_cancelled", "route_rejected",
              "tool_call", "tool_result", "write_approved", "write_rejected", "blocked", "run_finished",
-             "code_review_started", "code_review_finished", "handoff_proposed", "handoff_approved",
+             "handoff_proposed", "handoff_approved",
              "handoff_cancelled", "handoff_rejected", "handoff_limit"]
     choice = st.selectbox("Filter", kinds)
     rows = ss["log"].recent(event=None if choice == "all" else choice, limit=100)
@@ -730,7 +681,7 @@ with tab_chat:
                     st.warning(f"Document search failed: {e}")
 
             def stream():
-                for part in ollama.chat(model=model, messages=clean, stream=True):
+                for part in ollama.chat(model=model, messages=clean, stream=True, options=chat_options(model)):
                     yield part["message"]["content"]
 
             # Collect the whole answer first so images can be stripped before rendering.
