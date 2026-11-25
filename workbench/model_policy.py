@@ -20,7 +20,7 @@ from urllib.parse import urlsplit
 
 CHAT_PATHS = {"/v1/chat/completions": "openai", "/api/chat": "ollama"}
 LIST_PATHS = {"/v1/models", "/api/tags"}
-TOOL_NAME = re.compile(rb'"name"\s*:\s*"([A-Za-z0-9_.\-]{1,64})"')
+TOOL_NAME = re.compile(r"^[A-Za-z0-9_.\-]{1,64}$")
 
 
 @dataclass
@@ -42,12 +42,54 @@ def _prompt_text(body):
     return "\n".join(parts)
 
 
+def tool_names(reply: bytes) -> list:
+    """Names of the tools a model reply asks for, read ONLY from the reply's tool-call fields:
+    Ollama  message.tool_calls[].function.name         (one object, or one object per line when streamed)
+    OpenAI  choices[].message|delta.tool_calls[].function.name   (one object, or SSE "data:" lines)
+    Argument values are never searched, so text a model puts inside an argument cannot fake a tool name."""
+    text = reply.decode("utf-8", "replace")
+    docs = []
+    try:
+        docs.append(json.loads(text))
+    except ValueError:
+        for line in text.splitlines():
+            line = line.strip()
+            if line.startswith("data:"):
+                line = line[5:].strip()
+            if line and line != "[DONE]":
+                try:
+                    docs.append(json.loads(line))
+                except ValueError:
+                    continue
+    names = set()
+
+    def take(holder):
+        calls = holder.get("tool_calls") if isinstance(holder, dict) else None
+        for c in calls if isinstance(calls, list) else []:
+            fn = c.get("function") if isinstance(c, dict) else None
+            n = fn.get("name") if isinstance(fn, dict) else None
+            if isinstance(n, str) and TOOL_NAME.match(n):
+                names.add(n)
+
+    for d in docs:
+        if not isinstance(d, dict):
+            continue
+        take(d.get("message"))
+        for ch in d.get("choices") if isinstance(d.get("choices"), list) else []:
+            if isinstance(ch, dict):
+                take(ch.get("message"))
+                take(ch.get("delta"))
+    return sorted(names)
+
+
 class ModelPolicy:
-    def __init__(self, model, max_body=256 * 1024, max_tokens=1024, max_calls=200, canaries=None):
+    def __init__(self, model, max_body=256 * 1024, max_tokens=1024, max_calls=200, canaries=None,
+                 keep_reply_heads=0):
         self.model = model
         self.names = {model, model.split(":")[0], model if ":" in model else model + ":latest"}
         self.max_body, self.max_tokens, self.max_calls = max_body, max_tokens, max_calls
         self.canaries = dict(canaries or {})
+        self.keep_reply_heads = keep_reply_heads  # debugging only: reply text kept IN MEMORY, never in a record file
         self.calls = 0
         self.records = []
         self._lock = threading.Lock()
@@ -109,8 +151,9 @@ class ModelPolicy:
         rec = {"time": round(time.time(), 3), **meta}
         if meta.get("decision") == "forwarded":
             rec.update(upstream_status=upstream_status, reply_bytes=reply_bytes,
-                       tool_calls_requested=(sorted({n.decode() for n in TOOL_NAME.findall(reply_head)})
-                                             if b"tool_calls" in reply_head else []))
+                       tool_calls_requested=tool_names(reply_head))
+            if self.keep_reply_heads:
+                rec["_reply_head"] = reply_head[: self.keep_reply_heads].decode("utf-8", "replace")
         if error:
             rec["error"] = error
         with self._lock:

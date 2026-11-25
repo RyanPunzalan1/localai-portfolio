@@ -36,9 +36,6 @@ GROUPS = {
     "false_positive": ("False positive", "block", "warn"),
     "control_passed": ("Control passed", "check", "good"),
     "control_failed": ("Control failed", "alert", "serious"),
-    "stopped_at_approval": ("Stopped at approval", "block", "warn"),
-    "not_reached": ("Not reached", "minus", "unk"),
-    "inconclusive": ("Inconclusive", "help", "unk"),
     "other": ("Other", "dot", "unk"),
     "unverified": ("Unverified", "eye_off", "unk"),
 }

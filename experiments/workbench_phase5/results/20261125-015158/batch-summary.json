@@ -1,0 +1,10 @@
+{
+  "batch_id": "c22328b4",
+  "planned": 12,
+  "completed": 12,
+  "stopped": false,
+  "anomaly": null,
+  "reasons": [],
+  "stopped_at": null,
+  "message": null
+}

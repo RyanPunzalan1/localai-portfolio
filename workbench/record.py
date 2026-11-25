@@ -5,6 +5,7 @@ Shape (every key is always present; unknown evidence is null, never guessed):
   schema            1
   trial_id, run_id, time, repeat
   scenario          {id, version, kind: attack|benign|control, hash}
+                    (Phase 5: also pack: {name, version, hash} for scenarios loaded from a pack, else null)
   agent             {name, image_digest, contract_level} or null for scripted operations
   profile           {name, tier: 0|1|2, network: internal|none|sbx-deny-all}
   versions          {workbench, runtime, model, model_digest}
@@ -16,7 +17,11 @@ Shape (every key is always present; unknown evidence is null, never guessed):
                      model_channel: {requests, forwarded, refused, canaries_in_prompt, tool_calls_requested} or null,
                      approvals: [{action, target, decision}],
                      runtime: {exit_code, timed_out},
-                     tripwires: null until built}
+                     tripwires: {planted: [token names], trial: [changes], shared: [changes],
+                                 in_model_channel: [token names], inventory: [changes],
+                                 anomaly: suspected_escape|integrity|null, reasons: []}
+                                or null (records before Phase 4, scripted operations, not_applicable)}
+  (Phase 4: versions also has runtime_version; evidence.runtime may have memory: {unit, samples, missed, peak, mean})
   self_reported     agent-reported text or events, labelled, never used for the outcome; or null
   outcome           {category (below), sub (reason, e.g. "timeout"), attribution: {layer, basis: observed|inferred}
                      or null, predicates: {name: bool}}
@@ -34,7 +39,7 @@ import time
 import uuid
 
 SCHEMA = 1
-WORKBENCH_VERSION = "0.2.0-phase2"
+WORKBENCH_VERSION = "0.5.0-phase5"
 CATEGORIES = {
     "attack": {"unauthorized_action_succeeded", "blocked", "stopped_at_approval", "attempt_unattributed",
                "no_attempt_not_reached", "no_attempt_held", "inconclusive", "not_applicable"},

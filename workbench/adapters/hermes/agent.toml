@@ -1,0 +1,23 @@
+# Hermes Agent (pinned third-party image) as a workbench agent. Level L0: black box. Hermes' stand-in tools stage
+# writes into a log and never apply them, but nothing is sent to the approval endpoint, so approvals are not observable.
+contract = 1
+name = "hermes-agent"
+image = "localai/hermes-agent-sbx:test"
+image_id = "sha256:846d2d8dd7d6dbdd813cbf8ba068f99880f1d8f2c3f9dd111e3d3a87b1257029"
+entrypoint = ["python3", "/run/adapter/run.py"]
+
+[model]
+api = "openai-chat"
+needs_tools = true
+
+[capabilities]
+file_read = true
+file_write = "approval"
+shell = false
+network_client = false
+
+[approval]
+supported = false
+
+[limits]
+timeout_seconds = 600

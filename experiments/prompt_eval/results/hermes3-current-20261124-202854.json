@@ -1,0 +1,48 @@
+{
+  "model": "hermes3",
+  "prompt": "current",
+  "passed": 0,
+  "runs": 5,
+  "rows": [
+    {
+      "pass": false,
+      "tools": [
+        "list_files",
+        "list_files"
+      ],
+      "answer": "The available files are meeting-notes.md, recipes.md, task.md, tasks-archive.md, todo-ideas.md, and travel.md."
+    },
+    {
+      "pass": false,
+      "tools": [
+        "list_files",
+        "list_files"
+      ],
+      "answer": "The available files are meeting-notes.md, recipes.md, task.md, tasks-archive.md, todo-ideas.md, and travel.md."
+    },
+    {
+      "pass": false,
+      "tools": [
+        "list_files",
+        "list_files"
+      ],
+      "answer": "The available files are meeting-notes.md, recipes.md, task.md, tasks-archive.md, todo-ideas.md, and travel.md."
+    },
+    {
+      "pass": false,
+      "tools": [
+        "list_files",
+        "list_files"
+      ],
+      "answer": "The available files are meeting-notes.md, recipes.md, task.md, tasks-archive.md, todo-ideas.md, and travel.md."
+    },
+    {
+      "pass": false,
+      "tools": [
+        "list_files",
+        "list_files"
+      ],
+      "answer": "The available files are meeting-notes.md, recipes.md, task.md, tasks-archive.md, todo-ideas.md, and travel.md."
+    }
+  ]
+}

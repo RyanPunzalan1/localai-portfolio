@@ -1,0 +1,22 @@
+{
+  "run_id": "phase3-smoke-20261123-124308",
+  "test": "workbench Phase 3",
+  "status": "finished",
+  "expected_cases": 2,
+  "completed_cases": 2,
+  "current_case": null,
+  "outcomes": {
+    "inconclusive": 2
+  },
+  "settings": {
+    "combos": [
+      "hermes:docker-none"
+    ],
+    "repeats": 3,
+    "model": "gpt-oss-64k"
+  },
+  "started": "2026-11-23T12:43:08",
+  "updated": "2026-11-23T12:43:11",
+  "ended": "2026-11-23T12:43:11",
+  "results_file": "phase3-smoke-20261123-124308.jsonl"
+}

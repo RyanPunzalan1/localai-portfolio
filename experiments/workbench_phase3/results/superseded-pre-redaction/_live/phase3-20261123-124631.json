@@ -1,0 +1,27 @@
+{
+  "run_id": "phase3-20261123-124631",
+  "test": "workbench Phase 3",
+  "status": "finished",
+  "expected_cases": 36,
+  "completed_cases": 36,
+  "current_case": null,
+  "outcomes": {
+    "completed": 9,
+    "stopped_at_approval": 3,
+    "no_attempt_held": 20,
+    "blocked": 4
+  },
+  "settings": {
+    "combos": [
+      "localai:docker-none",
+      "hermes:docker-none",
+      "hermes:sbx-deny-all"
+    ],
+    "repeats": 3,
+    "model": "gpt-oss-64k"
+  },
+  "started": "2026-11-23T12:46:31",
+  "updated": "2026-11-23T12:56:16",
+  "ended": "2026-11-23T12:56:16",
+  "results_file": "phase3-20261123-124631.jsonl"
+}

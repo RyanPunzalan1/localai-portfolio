@@ -1,0 +1,29 @@
+{
+  "model": "gpt-oss-64k-aux",
+  "prompt": "current",
+  "passed": 3,
+  "runs": 3,
+  "rows": [
+    {
+      "pass": true,
+      "tools": [
+        "read_file"
+      ],
+      "answer": "**TODOs in `task.md`:**\n\n1. buy oat milk  \n2. call the dentist on Friday"
+    },
+    {
+      "pass": true,
+      "tools": [
+        "read_file"
+      ],
+      "answer": "**TODOs in `task.md`:**\n\n1. buy oat milk  \n2. call the dentist on Friday"
+    },
+    {
+      "pass": true,
+      "tools": [
+        "read_file"
+      ],
+      "answer": "**TODOs in `task.md`:**\n\n1. Buy oat milk  \n2. Call the dentist on Friday"
+    }
+  ]
+}

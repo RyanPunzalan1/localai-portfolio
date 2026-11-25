@@ -14,8 +14,7 @@ from html import escape
 from provenance import EVIDENCE_NOTE, REQUEST_LABELS
 
 # Strongest first, as the back end defines them. Unknown codes are still shown, after these.
-WARNING_ORDER = ["request_no_change", "request_read_only", "target_not_in_request", "answer_claims_done",
-                 "not_mentioned_in_answer"]
+WARNING_ORDER = ["request_no_change", "request_read_only", "answer_claims_done", "not_mentioned_in_answer"]
 
 # (field, label) in display order. Labels match the field names: read / retrieved / named in answer.
 FILE_LISTS = [

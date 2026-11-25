@@ -139,7 +139,7 @@ class ModelPolicyTests(unittest.TestCase):
     def test_canary_is_recorded_without_text(self):
         body = json.dumps({"model": "hermes3", "messages": [{"role": "user", "content": f"note {CANARY}"}]}).encode()
         d = self.p.decide("POST", "/api/chat", body)
-        rec = self.p.record(d.meta, b'{"tool_calls":[{"function":{"name":"read_file"}}]}', 50, 200)
+        rec = self.p.record(d.meta, b'{"message":{"tool_calls":[{"function":{"name":"read_file"}}]}}', 50, 200)
         self.assertEqual(rec["canaries_in_prompt"], ["c"])
         self.assertEqual(rec["tool_calls_requested"], ["read_file"])
         self.assertNotIn("note", json.dumps(rec))
@@ -147,6 +147,32 @@ class ModelPolicyTests(unittest.TestCase):
     def test_forward_refuses_a_remote_model_server(self):
         with self.assertRaises(ValueError):
             next(mp.forward("http://api.example.com", "/v1/chat/completions", b"{}"))
+
+
+class ToolNameTests(unittest.TestCase):
+    def test_ollama_and_openai_shapes(self):
+        ollama = b'{"message":{"role":"assistant","tool_calls":[{"function":{"name":"read_file","arguments":{"name":"task.md"}}}]}}'
+        self.assertEqual(mp.tool_names(ollama), ["read_file"])
+        stream = (b'{"message":{"content":"hi"}}\n{"message":{"tool_calls":[{"function":{"name":"list_files"}}]}}\n'
+                  b'{"done":true}\n')
+        self.assertEqual(mp.tool_names(stream), ["list_files"])
+        openai = b'{"choices":[{"message":{"tool_calls":[{"function":{"name":"save_note","arguments":"{}"}}]}}]}'
+        self.assertEqual(mp.tool_names(openai), ["save_note"])
+        sse = (b'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"name":"read_file","arguments":""}}]}}]}\n\n'
+               b'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{}"}}]}}]}\n\ndata: [DONE]\n')
+        self.assertEqual(mp.tool_names(sse), ["read_file"])
+
+    def test_argument_values_cannot_fake_a_tool_name(self):
+        hostile = (b'{"message":{"tool_calls":[{"function":{"name":"read_file","arguments":{"name":"save_note",'
+                   b'"tool_calls":[{"function":{"name":"save_note"}}]}}}]}}')
+        self.assertEqual(mp.tool_names(hostile), ["read_file"])
+        text_only = b'{"message":{"content":"{\\"name\\": \\"save_note\\"} tool_calls"}}'
+        self.assertEqual(mp.tool_names(text_only), [])
+
+    def test_junk_and_bad_names_are_ignored(self):
+        self.assertEqual(mp.tool_names(b"not json at all"), [])
+        self.assertEqual(mp.tool_names(b'{"message":{"tool_calls":[{"function":{"name":"a b; rm"}},5,"x"]}}'), [])
+        self.assertEqual(mp.tool_names(b'[1,2]'), [])
 
 
 class ChannelEndToEndTests(unittest.TestCase):
@@ -232,11 +258,33 @@ class HostileShimTests(unittest.TestCase):
         self.assertEqual(chan.violation, "request before ready")
 
     def test_flood_of_requests_is_limited(self):
-        script = ("import json,sys,time\nprint(json.dumps({'id':0,'type':'ready','port':1}))\n"
-                  "for i in range(1, 50): print(json.dumps({'id':i,'type':'request','method':'POST',"
-                  "'path':'/v1/chat/completions','body':''}))\nsys.stdout.flush(); time.sleep(30)")
-        chan = self.run_fake(script)
-        self.assertEqual(chan.violation, "too many requests in flight")
+        """Requests stay open because the model server never answers, so the in-flight limit is reached for certain."""
+        import socket
+        srv = socket.socket()
+        srv.bind(("127.0.0.1", 0))
+        srv.listen(16)
+        held = []
+        threading.Thread(target=lambda: [held.append(srv.accept()[0]) for _ in range(16)], daemon=True).start()
+        body = base64.b64encode(json.dumps({"model": "hermes3", "messages": [{"role": "user", "content": "x"}]}).encode())
+        script = ("import json,sys,time\nprint(json.dumps({'id':0,'type':'ready','port':1}), flush=True)\n"
+                  "for i in range(1, 9): print(json.dumps({'id':i,'type':'request','method':'POST',"
+                  f"'path':'/v1/chat/completions','body':'{body.decode()}'}}), flush=True)\ntime.sleep(30)")
+        try:
+            chan = ch.Channel([sys.executable, "-c", script], mp.ModelPolicy("hermes3"),
+                              upstream=f"http://127.0.0.1:{srv.getsockname()[1]}")
+            deadline = time.time() + 20
+            while chan.violation is None and time.time() < deadline:
+                time.sleep(0.05)
+            chan._thread.join(5)
+            chan.close()
+            chan.proc.wait(timeout=10)
+            for s_ in (chan.proc.stdin, chan.proc.stdout, chan.proc.stderr):
+                s_.close()
+            self.assertEqual(chan.violation, "too many requests in flight")
+        finally:
+            for c in held:
+                c.close()
+            srv.close()
 
 
 if __name__ == "__main__":

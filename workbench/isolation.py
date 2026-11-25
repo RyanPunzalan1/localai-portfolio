@@ -11,12 +11,19 @@ or sbx. The run_* helpers call the runtimes. A non-empty problem list means: do 
 """
 
 import json
+import re
 import subprocess
 from pathlib import Path
+
+from workbench import specs
 
 PREFLIGHT = Path(__file__).resolve().parent / "preflight.py"
 # How sbx names the preflight's TCP targets in its policy log (host.docker.internal is logged as localhost).
 SBX_MUST_BE_BLOCKED = ("1.1.1.1:443", "93.184.215.14:80", "localhost:11434", "localhost:8502", "localhost:8501")
+
+
+class IsolationRefused(Exception):
+    """The workbench refuses to start a sandbox (for example, an unvalidated runtime version). Stops the batch."""
 
 
 # ------------------------------------------------------------------ pure evaluators
@@ -129,6 +136,60 @@ def check_sbx_log(log: dict, must_be_blocked=SBX_MUST_BE_BLOCKED, allowed_ok=())
     return problems
 
 
+def parse_sbx_version(text: str):
+    """'sbx version v0.54.0 <commit>' -> 'v0.54.0', or None."""
+    m = re.search(r"\bv\d+\.\d+\.\d+\b", text or "")
+    return m.group(0) if m else None
+
+
+def check_sbx_version(cli_version, pinned=None) -> list:
+    """The VM tier refuses any sbx version other than the validated one (owner decision, 2026-11-24)."""
+    pinned = pinned or specs.SBX_VERSION
+    if cli_version != pinned:
+        return [f"sbx version {cli_version or '(unreadable)'} is not the validated {pinned}; refusing the VM tier"]
+    return []
+
+
+def check_sbx_host(settings: dict, mcp_servers, required=None) -> list:
+    """Host-side sbx state the VM tier needs before any sandbox exists: each bridge setting in SBX_REQUIRED_SETTINGS has
+    its required value, and no MCP server is registered on the host. A value that could not be read is a problem."""
+    required = specs.SBX_REQUIRED_SETTINGS if required is None else required
+    problems = [f"sbx setting {k} is {settings.get(k)!r}, must be {v!r} (sbx settings set {k} {v})"
+                for k, v in required.items() if settings.get(k) != v]
+    if mcp_servers is None:
+        problems.append("could not list the MCP servers registered with sbx")
+    elif mcp_servers:
+        problems.append(f"MCP servers are registered with sbx ({', '.join(mcp_servers)}); a sandbox could reach them")
+    return problems
+
+
+def check_sbx_inspect(info: dict, name: str, workspace, primary, pinned=None) -> list:
+    """`sbx inspect <name> --format json`: the sandbox has exactly the two host mounts the workbench made, no runtime
+    mounts, no MCP servers and a static (fixed, empty) MCP set, no published ports, a sandbox-scoped network policy, and
+    the validated daemon version."""
+    pinned = pinned or specs.SBX_VERSION
+    if not isinstance(info, dict) or not info:
+        return ["sbx inspect returned nothing"]
+    problems = []
+    if info.get("name") != name:
+        problems.append(f"inspect is for {info.get('name')!r}, not {name!r}")
+    for k in ("daemon_version", "created_version"):
+        if info.get(k) != pinned:
+            problems.append(f"{k} is {info.get(k)!r}, not the validated {pinned}")
+    want = {(str(primary), str(primary), False), (str(workspace), "/workspace", False)}
+    got = {(m.get("host_path"), m.get("container_target"), bool(m.get("read_only"))) for m in info.get("host_mounts") or []}
+    if got != want:
+        problems.append(f"host mounts differ from the two the workbench made: {sorted(got - want) or 'missing ones'}")
+    for k in ("runtime_mounts", "mcp_servers", "ports", "published_ports", "secrets"):
+        if info.get(k):
+            problems.append(f"sandbox has {k}: {str(info.get(k))[:120]}")
+    if info.get("mcp_mode") != "static":
+        problems.append(f"MCP mode is {info.get('mcp_mode')!r}, not static (the sandbox could add MCP servers mid-run)")
+    if (info.get("network_policy") or {}).get("scope") != "sandbox":
+        problems.append(f"network policy scope is {(info.get('network_policy') or {}).get('scope')!r}, not sandbox")
+    return problems
+
+
 # ------------------------------------------------------------------ runners (call the runtimes)
 def sh(args, timeout=300, input=None):
     return subprocess.run(args, capture_output=True, text=True, timeout=timeout, input=input)
@@ -194,3 +255,42 @@ def sbx_log(name):
         return json.loads(r.stdout)
     except ValueError:
         return {"allowed": [{"host": "(policy log unreadable)"}]}
+
+
+def sbx_version():
+    r = sh(["sbx", "version"], timeout=30)
+    return parse_sbx_version(r.stdout) if r.returncode == 0 else None
+
+
+def docker_version():
+    r = sh(["docker", "version", "--format", "{{.Server.Version}}"], timeout=30)
+    return r.stdout.strip() or None if r.returncode == 0 else None
+
+
+def sbx_settings(keys=None) -> dict:
+    """{key: evaluated value as text, or None if it could not be read}."""
+    out = {}
+    for k in keys or specs.SBX_REQUIRED_SETTINGS:
+        r = sh(["sbx", "settings", "get", k], timeout=30)
+        out[k] = r.stdout.strip() if r.returncode == 0 else None
+    return out
+
+
+def sbx_mcp_servers():
+    """Names of MCP servers registered with sbx, or None if the list could not be read."""
+    r = sh(["sbx", "mcp", "ls", "--json"], timeout=30)
+    try:
+        data = json.loads(r.stdout) if r.returncode == 0 else None
+    except ValueError:
+        return None
+    if not isinstance(data, list):
+        return None
+    return [str(d.get("name", d)) if isinstance(d, dict) else str(d) for d in data]
+
+
+def sbx_inspect(name):
+    r = sh(["sbx", "inspect", name, "--format", "json"], timeout=60)
+    try:
+        return json.loads(r.stdout)
+    except ValueError:
+        return {}

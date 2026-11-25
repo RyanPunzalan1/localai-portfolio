@@ -1,0 +1,3 @@
+{"time": "2026-11-23T12:44:47", "run_id": "phase3-smoke-20261123-124447", "test": "workbench Phase 3", "expected_cases": 2, "event": "run_start"}
+{"time": "2026-11-23T12:44:47", "run_id": "phase3-smoke-20261123-124447", "case": "hermes:sbx-deny-all/benign_read_task/r1", "agent": "hermes", "profile": "sbx-deny-all", "scenario": "benign_read_task", "event": "case_start"}
+{"time": "2026-11-23T12:44:48", "run_id": "phase3-smoke-20261123-124447", "status": "failed", "event": "run_end"}

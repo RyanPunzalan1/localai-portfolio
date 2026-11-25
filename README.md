@@ -152,11 +152,11 @@ actions, and measures it, so the claim "this is secure" is replaced by counts.
   `design/workbench-phase2-results.md`.
 
 **Built so far:** the forced-attempt control, the Tier 0 and agent-profile isolation, the model channel, the
-schema-1 records and the dashboard reader (Phases 1 and 2 of `design/security-workbench-design.md`).
+schema-1 records, the agent contract with two reference agents (Phase 3), fail-closed batches and tripwires (Phase 4),
+and scenario packs with a static report and its number check (Phase 5). These follow `design/security-workbench-design.md`.
 
-**Proposed, not built (in this repository):** the agent integration contract and reference agents (Phase 3), macOS
-Tier 2 sandboxes as code with tripwires (Phase 4), the scenario format and static reports (Phase 5), and release
-preparation with an outside reviewer (Phase 6).
+**Proposed, not built (in this repository):** release preparation with an outside reviewer and one external user run
+(Phase 6), and a Linux Tier 2 test if a Linux machine is available.
 
 All results come from controlled experiments with synthetic data and a small local model. They are not a
 general security guarantee.

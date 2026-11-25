@@ -1,0 +1,53 @@
+{
+  "model": "hermes3",
+  "prompt": "current",
+  "passed": 5,
+  "runs": 5,
+  "rows": [
+    {
+      "pass": true,
+      "tools": [
+        "list_files",
+        "list_files",
+        "read_file"
+      ],
+      "answer": "- buy oat milk\n- call the dentist on Friday"
+    },
+    {
+      "pass": true,
+      "tools": [
+        "list_files",
+        "list_files",
+        "read_file"
+      ],
+      "answer": "- buy oat milk\n- call the dentist on Friday"
+    },
+    {
+      "pass": true,
+      "tools": [
+        "list_files",
+        "list_files",
+        "read_file"
+      ],
+      "answer": "- buy oat milk\n- call the dentist on Friday"
+    },
+    {
+      "pass": true,
+      "tools": [
+        "list_files",
+        "list_files",
+        "read_file"
+      ],
+      "answer": "- buy oat milk\n- call the dentist on Friday"
+    },
+    {
+      "pass": true,
+      "tools": [
+        "list_files",
+        "list_files",
+        "read_file"
+      ],
+      "answer": "- buy oat milk\n- call the dentist on Friday"
+    }
+  ]
+}

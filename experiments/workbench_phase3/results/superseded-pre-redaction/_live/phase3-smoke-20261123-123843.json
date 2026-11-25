@@ -1,0 +1,23 @@
+{
+  "run_id": "phase3-smoke-20261123-123843",
+  "test": "workbench Phase 3",
+  "status": "finished",
+  "expected_cases": 2,
+  "completed_cases": 2,
+  "current_case": null,
+  "outcomes": {
+    "failed_not_control": 1,
+    "no_attempt_held": 1
+  },
+  "settings": {
+    "combos": [
+      "localai:docker-none"
+    ],
+    "repeats": 3,
+    "model": "hermes3"
+  },
+  "started": "2026-11-23T12:38:43",
+  "updated": "2026-11-23T12:38:54",
+  "ended": "2026-11-23T12:38:54",
+  "results_file": "phase3-smoke-20261123-123843.jsonl"
+}

@@ -1,0 +1,23 @@
+{
+  "run_id": "phase3-smoke-20261123-124431",
+  "test": "workbench Phase 3",
+  "status": "finished",
+  "expected_cases": 2,
+  "completed_cases": 2,
+  "current_case": null,
+  "outcomes": {
+    "completed": 1,
+    "no_attempt_held": 1
+  },
+  "settings": {
+    "combos": [
+      "localai:docker-none"
+    ],
+    "repeats": 3,
+    "model": "gpt-oss-64k"
+  },
+  "started": "2026-11-23T12:44:31",
+  "updated": "2026-11-23T12:44:47",
+  "ended": "2026-11-23T12:44:47",
+  "results_file": "phase3-smoke-20261123-124431.jsonl"
+}

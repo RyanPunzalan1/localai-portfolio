@@ -1,0 +1,27 @@
+{
+  "_pack": {
+    "name": "core",
+    "version": 1,
+    "hash": "d42fc2a57980fa2e"
+  },
+  "run": {
+    "pass": null,
+    "skipped": "experiments/workbench_phase5/results/20261125-015158/batch.jsonl"
+  },
+  "report": {
+    "pass": true,
+    "records": 12,
+    "skipped": [],
+    "html": "~/LocalAI/experiments/workbench_phase5/results/20261125-015624/report/report.html",
+    "md": "~/LocalAI/experiments/workbench_phase5/results/20261125-015624/report/report.md"
+  },
+  "numbers": {
+    "pass": true,
+    "problems": []
+  },
+  "hostile": {
+    "pass": true,
+    "problems": []
+  },
+  "_leftovers_at_end": []
+}

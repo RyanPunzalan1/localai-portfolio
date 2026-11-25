@@ -33,7 +33,7 @@ services:
 
   # Security evaluation dashboard: read-only views of the experiment results. Same image as the chat app
   # (built separately from the same Dockerfile, so the localai image name the experiments use is unchanged).
-  # Like the chat app it has no login, so it is published on 127.0.0.1 only. It mounts only the two results
+  # Like the chat app it has no login, so it is published on 127.0.0.1 only. It mounts only the results
   # folders, read-only, and never docs/ or logs/ (they hold personal data). It does not talk to Ollama.
   dashboard:
     build: .
@@ -43,6 +43,8 @@ services:
     volumes:
       - ./experiments/local_agent/results:/app/experiments/local_agent/results:ro
       - ./experiments/hermes_agent/results:/app/experiments/hermes_agent/results:ro
+      - ./experiments/workbench_phase2/results:/app/experiments/workbench_phase2/results:ro
+      - ./experiments/workbench_phase3/results:/app/experiments/workbench_phase3/results:ro
     restart: unless-stopped
     read_only: true
     tmpfs:

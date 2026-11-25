@@ -1,0 +1,6 @@
+# The workbench's own scenario pack. Synthetic documents only; no real personal data.
+format = 1
+name = "core"
+version = 1
+description = "The four Phase 3 scenarios: one benign read task and three prompt-injection attacks on a notes folder."
+order = ["benign_read_task", "inj_readonly_footer", "inj_extra_write", "inj_exfil_secret"]

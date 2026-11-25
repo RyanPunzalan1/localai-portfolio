@@ -21,8 +21,6 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parent.parent
 # Overridable so tests and a dev preview can point the dashboard at a scratch folder instead of real results.
 SECURITY_DIR = Path(os.environ.get("DASHBOARD_SECURITY_RESULTS") or ROOT / "experiments" / "local_agent" / "results")
-WORKBENCH_DIR = Path(os.environ.get("DASHBOARD_WORKBENCH_RESULTS")
-                     or ROOT / "experiments" / "workbench_phase2" / "results")
 MODEL_TEST_DIR = Path(os.environ.get("DASHBOARD_MODEL_RESULTS") or ROOT / "experiments" / "hermes_agent" / "results")
 
 # Record label -> display group. Labels not listed here map to "other" and are shown, never dropped.
@@ -37,19 +35,6 @@ LABEL_GROUPS = {
     "permitted_blocked": "control_failed",
 }
 
-# Workbench schema-1 category -> display group. Categories stay separate: a run that was never reached, one the
-# model held back from, and one stopped at approval are three groups, none of them "blocked".
-WORKBENCH_GROUPS = {
-    "unauthorized_action_succeeded": "succeeded", "blocked": "blocked", "stopped_at_approval": "stopped_at_approval",
-    "attempt_unattributed": "unattributed", "no_attempt_not_reached": "not_reached", "no_attempt_held": "no_attempt",
-    "inconclusive": "inconclusive", "not_applicable": "other",
-    "completed": "benign_completed", "false_positive": "false_positive", "failed_not_control": "other",
-    "observer_control_passed": "control_passed", "permitted_action_passed": "control_passed",
-    "observer_control_failed": "control_failed", "permitted_action_failed": "control_failed",
-}
-# Categories where an action was actually attempted or proposed. No-attempt and inconclusive are not counted here.
-WORKBENCH_ATTEMPTED = {"unauthorized_action_succeeded", "blocked", "stopped_at_approval", "attempt_unattributed"}
-
 # Fields the independent observer writes. A record missing any of them is "unverified".
 OBSERVER_FIELDS = {
     "forced_control": ("sink_hits", "files_changed", "rc"),
@@ -61,7 +46,6 @@ TRIAL_COLUMNS = [
     "label", "group", "layer", "attribution", "verified", "attempted", "sink_hits", "sink_canary_hits",
     "files_changed", "rc", "err_tail", "canary_in_output", "evidence", "tool_calls", "time", "raw",
 ]
-WORKBENCH_SUITE = "workbench"
 
 
 @dataclass(frozen=True)
@@ -97,21 +81,8 @@ def classify(path: Path) -> ResultFile:
             if variant and re.match(r"(hermes|gpt-oss|llama|qwen|mistral)", variant):
                 model_hint = variant
         else:
-            suite = WORKBENCH_SUITE if _is_workbench_file(path) else "unknown"
+            suite = "unknown"
     return ResultFile(path, name, suite, superseded, model_hint)
-
-
-def _is_workbench_file(path: Path) -> bool:
-    """A JSONL whose first record has "schema": 1 holds workbench evidence records."""
-    try:
-        with path.open(encoding="utf-8") as fh:
-            for line in fh:
-                if line.strip():
-                    rec = json.loads(line)
-                    return isinstance(rec, dict) and rec.get("schema") == 1
-    except (OSError, json.JSONDecodeError):
-        pass
-    return False
 
 
 def discover(directory: Path, include_superseded: bool = False) -> list[ResultFile]:
@@ -252,102 +223,10 @@ def normalise(rec: dict, rf: ResultFile) -> dict:
     }
 
 
-def workbench_problems(rec: dict) -> list[str]:
-    """Why a record cannot be shown as a schema-1 trial. The dashboard container has no workbench/ package, so this
-    checks only what the display needs; workbench.record.validate is the full check on the writing side."""
-    problems = []
-    if rec.get("schema") != 1:
-        problems.append("schema is not 1")
-    kind = (rec.get("scenario") or {}).get("kind") if isinstance(rec.get("scenario"), dict) else None
-    if kind not in ("attack", "benign", "control"):
-        problems.append(f"bad scenario kind: {kind!r}")
-    category = (rec.get("outcome") or {}).get("category") if isinstance(rec.get("outcome"), dict) else None
-    if category not in WORKBENCH_GROUPS:
-        problems.append(f"unknown category: {category!r}")
-    return problems
-
-
-def _wb_verified(rec: dict) -> bool:
-    """False only when the record itself reports an isolation failure. null means the check does not apply
-    to that profile (for example the runtime keeps no log), so it is not a failure."""
-    iso = rec.get("isolation") if isinstance(rec.get("isolation"), dict) else {}
-    checks = ("config_ok", "preflight_ok", "negative_control_ok", "runtime_log_ok")
-    return not iso.get("problems") and all(iso.get(k) is not False for k in checks)
-
-
-def _wb_evidence(rec: dict, group: str, category: str) -> str:
-    """One line from the observer's evidence fields. self_reported text is never used here."""
-    ev = rec.get("evidence") if isinstance(rec.get("evidence"), dict) else {}
-    outcome = rec.get("outcome") if isinstance(rec.get("outcome"), dict) else {}
-    parts = []
-    ws = ev.get("workspace") or {}
-    changed = [f"{n} {k}" for k, n in ((k, len(ws.get(k) or [])) for k in ("created", "modified", "removed")) if n]
-    if changed:
-        parts.append("workspace: " + ", ".join(changed))
-    sink = ev.get("sink")
-    if isinstance(sink, dict):
-        parts.append(f"sink hits {sink.get('hits')} (canary {sink.get('canary_hits')})")
-    net = ev.get("network_log")
-    if isinstance(net, dict):
-        names = ", ".join(net.get("names") or [])
-        parts.append(f"network blocked {net.get('blocked')}, allowed {net.get('allowed')}"
-                     + (f"; names (agent-influenced, rank 3): {names}" if names else ""))
-    if (outcome.get("sub")):
-        parts.append(f"reason: {outcome['sub']}")
-    if group == "stopped_at_approval":
-        parts.append("proposed, waiting for approval; nothing was written")
-    return "Observer: " + "; ".join(parts) if parts else f"Observer category: {category}"
-
-
-def normalise_workbench(rec: dict, rf: ResultFile) -> dict:
-    """One schema-1 evidence record -> one row in the shared trial schema. Nothing is inferred beyond the record:
-    the outcome category, attribution and its basis (observed or inferred) are taken as written."""
-    scenario = rec["scenario"]
-    outcome = rec["outcome"]
-    profile = rec.get("profile") if isinstance(rec.get("profile"), dict) else {}
-    ev = rec.get("evidence") if isinstance(rec.get("evidence"), dict) else {}
-    versions = rec.get("versions") if isinstance(rec.get("versions"), dict) else {}
-    category = outcome["category"]
-    group = WORKBENCH_GROUPS[category]
-    kind = scenario["kind"]
-    attribution = outcome.get("attribution") if isinstance(outcome.get("attribution"), dict) else None
-    ws = ev.get("workspace") or {}
-    sink = ev.get("sink") if isinstance(ev.get("sink"), dict) else {}
-    runtime = ev.get("runtime") if isinstance(ev.get("runtime"), dict) else {}
-    verified = _wb_verified(rec)
-    return {
-        "run_id": rec.get("run_id") or rf.run_id,
-        "source_file": str(rf.path.relative_to(ROOT)) if rf.path.is_relative_to(ROOT) else rf.path.name,
-        "suite": rf.suite, "superseded": rf.superseded,
-        "item": scenario.get("id") or "?", "kind": kind,
-        "config": profile.get("name") or "?", "model": versions.get("model"), "repeat": rec.get("repeat"),
-        "label": category, "group": group,
-        "layer": attribution.get("layer") if attribution else None,
-        "attribution": attribution.get("basis") if attribution else None,
-        "verified": verified,
-        "attempted": kind == "attack" and category in WORKBENCH_ATTEMPTED,
-        "sink_hits": sink.get("hits"), "sink_canary_hits": sink.get("canary_hits"),
-        "files_changed": any(ws.get(k) for k in ("created", "modified", "removed")) if ws else None,
-        "rc": runtime.get("exit_code"), "err_tail": outcome.get("sub") or "",
-        "canary_in_output": False,
-        "evidence": _wb_evidence(rec, group, category) if verified else "Unverified: the record reports an isolation failure",
-        "tool_calls": [], "time": _time(rec.get("time")), "raw": rec,
-    }
-
-
 def load_trials(files: list[ResultFile], report: LoadReport | None = None) -> pd.DataFrame:
-    """Security trials from forced-control, model-run and workbench files as one table (TRIAL_COLUMNS).
-    Workbench records that cannot be shown are reported with the other unreadable lines, not dropped silently."""
+    """Security trials from forced-control and model-run files as one table (TRIAL_COLUMNS)."""
     rows = []
     for rf in files:
-        if rf.suite == WORKBENCH_SUITE:
-            for n, rec in enumerate(read_jsonl(rf.path, report), 1):
-                if workbench_problems(rec):
-                    if report is not None:
-                        report.bad_lines.append((rf.path.name, n))
-                    continue
-                rows.append(normalise_workbench(rec, rf))
-            continue
         if rf.suite not in OBSERVER_FIELDS:
             continue
         rows.extend(normalise(rec, rf) for rec in read_jsonl(rf.path, report))
@@ -360,7 +239,7 @@ def outcome_counts(trials: pd.DataFrame, by: str = "config") -> pd.DataFrame:
     Unverified records are counted apart and are not included in succeeded or blocked.
     """
     cols = ["attack_trials", "attempted", "succeeded", "blocked", "unattributed", "no_attempt",
-            "stopped_at_approval", "not_reached", "inconclusive", "unverified", "benign_trials", "benign_completed", "false_positive",
+            "unverified", "benign_trials", "benign_completed", "false_positive",
             "control_trials", "control_passed", "control_failed", "other"]
     if trials.empty:
         return pd.DataFrame(columns=[by, *cols])
@@ -378,9 +257,6 @@ def outcome_counts(trials: pd.DataFrame, by: str = "config") -> pd.DataFrame:
             "blocked": int((atk["group"] == "blocked").sum()),
             "unattributed": int((atk["group"] == "unattributed").sum()),
             "no_attempt": int((atk["group"] == "no_attempt").sum()),
-            "stopped_at_approval": int((atk["group"] == "stopped_at_approval").sum()),
-            "not_reached": int((atk["group"] == "not_reached").sum()),
-            "inconclusive": int((atk["group"] == "inconclusive").sum()),
             "unverified": int((~g["verified"]).sum()),
             "benign_trials": int((g["kind"] == "benign").sum()),
             "benign_completed": int((ben["group"] == "benign_completed").sum()),
@@ -506,9 +382,7 @@ def row_dict(row: pd.Series) -> dict:
 
 GROUP_NAMES = {"succeeded": "Succeeded", "blocked": "Blocked", "unattributed": "Unattributed",
                "no_attempt": "No attempt", "benign_completed": "Completed", "false_positive": "False positive",
-               "control_passed": "Control passed", "control_failed": "Control failed", "other": "Other",
-               "stopped_at_approval": "Stopped at approval", "not_reached": "Not reached",
-               "inconclusive": "Inconclusive"}
+               "control_passed": "Control passed", "control_failed": "Control failed", "other": "Other"}
 KIND_RANK = {"attack": 0, "control": 1, "benign": 2}
 
 

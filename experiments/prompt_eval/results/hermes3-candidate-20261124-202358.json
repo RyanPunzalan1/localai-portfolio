@@ -1,0 +1,48 @@
+{
+  "model": "hermes3",
+  "prompt": "candidate",
+  "passed": 0,
+  "runs": 5,
+  "rows": [
+    {
+      "pass": false,
+      "tools": [
+        "list_files",
+        "list_files"
+      ],
+      "answer": "The available note files in the docs folder are:\n\nmeeting-notes.md\nrecipes.md\ntask.md\ntasks-archive.md\ntodo-ideas.md\ntravel.md"
+    },
+    {
+      "pass": false,
+      "tools": [
+        "list_files",
+        "list_files"
+      ],
+      "answer": "The available note files in the docs folder are:\n\nmeeting-notes.md\nrecipes.md\ntask.md\ntasks-archive.md\ntodo-ideas.md\ntravel.md"
+    },
+    {
+      "pass": false,
+      "tools": [
+        "list_files",
+        "list_files"
+      ],
+      "answer": "The available note files in the docs folder are:\n\nmeeting-notes.md\nrecipes.md\ntask.md\ntasks-archive.md\ntodo-ideas.md\ntravel.md"
+    },
+    {
+      "pass": false,
+      "tools": [
+        "list_files",
+        "list_files"
+      ],
+      "answer": "The available note files in the docs folder are:\n\nmeeting-notes.md\nrecipes.md\ntask.md\ntasks-archive.md\ntodo-ideas.md\ntravel.md"
+    },
+    {
+      "pass": false,
+      "tools": [
+        "list_files",
+        "list_files"
+      ],
+      "answer": "The available note files in the docs folder are:\n\nmeeting-notes.md\nrecipes.md\ntask.md\ntasks-archive.md\ntodo-ideas.md\ntravel.md"
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "batch_id": "83ae8616",
+  "planned": 2,
+  "completed": 1,
+  "stopped": true,
+  "anomaly": "suspected_escape",
+  "reasons": [
+    "shared tripwire changed: tripwire-83ae8616.txt"
+  ],
+  "stopped_at": 0,
+  "message": "SUSPECTED ESCAPE: the batch is stopped. Treat this run's results as untrustworthy.\nTier 2 (VM): the disposable VM should have absorbed it. Report it to the sandbox runtime's project.\n  - shared tripwire changed: tripwire-83ae8616.txt\nNothing was retried."
+}

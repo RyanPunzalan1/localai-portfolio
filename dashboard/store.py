@@ -45,8 +45,7 @@ def _load(include_superseded: bool, _sec: list, _mod: list, signature: tuple) ->
 
 def snapshot() -> Snapshot:
     include = bool(st.session_state.get("include_superseded", False))
-    sec = (data.discover(data.SECURITY_DIR, include_superseded=include)
-           + data.discover(data.WORKBENCH_DIR, include_superseded=include))
+    sec = data.discover(data.SECURITY_DIR, include_superseded=include)
     mod = data.discover(data.MODEL_TEST_DIR, include_superseded=include)
     notes = data.ResultFile(data.MODEL_TEST_DIR / data.RUN_NOTES, "notes", "notes", False)
     return _load(include, sec, mod, _signature(sec) + _signature(mod) + _signature([notes]))

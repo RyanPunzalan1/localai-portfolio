@@ -366,7 +366,7 @@ command channel, driven by the trusted evaluator on the host.
 |---|---|---|
 | 0 Scripted operations | Internal Docker network with a sink (and later a DNS sink), no gateway | No third-party code runs; the sink is how exfiltration *outcomes* are measured. Validated in the PoC: 48/48 revision-2 cells reproduced, host unreachable [V] |
 | 1 Trusted code (Docker) | `network_mode: none` | Same rule as Tier 2, so the user's own agent is not given more than a third-party one |
-| 2 Isolated (sbx VM) | Sandbox-scoped deny for every globally allowed host and **no sandbox-scoped allow rule** (sbx still lists its global allows; each is cancelled by a matching deny, since deny wins [V, Phase 1]), no host folder beyond the fixture | Tested in the PoC: direct internet and host Ollama refused [V, B3] |
+| 2 Isolated (sbx VM) | Sandbox-scoped deny for every globally allowed host and **no sandbox-scoped allow rule** (sbx still lists its global allows; each is cancelled by a matching deny, since deny wins [V, Phase 1]), no host folder beyond the fixture; a fixed empty MCP set (`--static-mcp none`); refused unless the sbx host-browser and SSH-agent bridges are off and no MCP server is registered [V, 2026-11-25] | Tested in the PoC: direct internet and host Ollama refused [V, B3] |
 
 #### 5.2.2 Model and approval traffic over the command channel (design; not built in this phase)
 
@@ -857,17 +857,20 @@ built in this phase.
   - the sandbox still passes all four isolation checks with the channel running
   - the dashboard reads both schemas
 
-**Phase 3: contract v1 and two reference agents.**
+**Phase 3: contract v1 and two reference agents.** *Done 2026-11-23; gate passed (`design/workbench-phase3-results.md`).*
 - Write the manifest schema and the task and answer files, and add the approval endpoint.
 - Package LocalAI's agent as an image (L1) and wrap Hermes Agent's CLI (L0).
 - *Gate:* the same scenarios run through both, and their differences are explained by evidence, not by self-reports.
 
-**Phase 4: Tier 2 on macOS.**
+**Phase 4: Tier 2 on macOS.** *Done 2026-11-24; gate passed (`design/workbench-phase4-results.md`). Owner decisions: refuse any sbx version other than the validated one; tripwires beside each trial and under `~/.agent-workbench/`.*
 - Turn the sbx recipe into code: per-run sandbox, deny-list rebuilt, preflight, destroy after.
 - Add tripwires and the escape-handling steps (section 4.5).
 - *Gate:* negative tests (forbidden options, reachability, tripwire change) all fail closed; memory use is measured.
 
-**Phase 5: scenarios and reports.**
+**Phase 5: scenarios and reports.** *Done 2026-11-25; gate passed (`design/workbench-phase5-results.md`). Owner decisions: scenario files are TOML (stdlib `tomllib`, no new
+dependency); the outcome rules in `verdict.decide` stay and only their inputs move into the scenario file as predicates from a
+fixed list; the report covers section 8.2 except per-layer ablation tables, as static HTML and Markdown; the four Phase 3
+scenarios move into the first pack, with a test proving they behave the same.*
 - Write the scenario format, the predicate engine, and the static report with escaping tests (hostile strings), extending the
   consistency check.
 - *Gate:* the report numbers are recomputed and agree; a hostile answer renders as plain text.

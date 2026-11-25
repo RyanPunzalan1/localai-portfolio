@@ -15,10 +15,8 @@ import altair as alt
 import pandas as pd
 
 CHART_COLORS = {"Succeeded": "#f0484f", "Blocked": "#22c55e", "Unattributed": "#f5c542", "No attempt": "#5f5f6b",
-                "Stopped at approval": "#e9b730", "Not reached": "#6b7280", "Inconclusive": "#9ca3af",
                 "Other": "#f76b15"}
-OUTCOME_ORDER = ["Succeeded", "Stopped at approval", "Unattributed", "Blocked", "No attempt", "Not reached",
-                 "Inconclusive", "Other"]
+OUTCOME_ORDER = ["Succeeded", "Unattributed", "Blocked", "No attempt", "Other"]
 SELECTION = "pick"
 # Layer names become CSS classes in the rendered SVG (<name>_marks); dashboard.theme styles them.
 SEGMENTS, BAR_LABELS = "outcome_segments", "outcome_labels"
@@ -38,9 +36,8 @@ def outcome_long(counts: pd.DataFrame) -> pd.DataFrame:
     """outcome_counts() rows -> one row per (config, outcome segment) with n, total, share and a label."""
     rows = []
     for _, r in counts.iterrows():
-        parts = {"Succeeded": r["succeeded"], "Stopped at approval": r.get("stopped_at_approval", 0),
-                 "Unattributed": r["unattributed"], "Blocked": r["blocked"], "No attempt": r["no_attempt"],
-                 "Not reached": r.get("not_reached", 0), "Inconclusive": r.get("inconclusive", 0)}
+        parts = {"Succeeded": r["succeeded"], "Unattributed": r["unattributed"], "Blocked": r["blocked"],
+                 "No attempt": r["no_attempt"]}
         total = int(sum(parts.values()))
         if total == 0:
             continue
@@ -114,12 +111,10 @@ def selected_points(event) -> list[dict]:
 # they never read as "blocked"; problems for legitimate work (false positive, control failed) are amber/orange.
 MATRIX_COLORS = {
     "Succeeded": "#d03b3b", "Blocked": "#22c55e", "Unattributed": "#8a8aa3", "No attempt": "#5f5f6b",
-    "Stopped at approval": "#e0a030", "Not reached": "#6b7280", "Inconclusive": "#9ca3af",
     "Completed": "#5d7290", "Control passed": "#7f93b3", "False positive": "#e0a030", "Control failed": "#ec835a",
     "Mixed": "#9b6fd0", "Unverified": "#a0a0ad", "Other": "#a0a0ad",
 }
-_DARK_TEXT = {"False positive", "Control failed", "Unverified", "Other", "Unattributed", "Stopped at approval",
-              "Inconclusive"}
+_DARK_TEXT = {"False positive", "Control failed", "Unverified", "Other", "Unattributed"}
 MATRIX_SELECTION = "cell"
 MATRIX_CELLS, MATRIX_TEXT = "matrix_cells", "matrix_text"
 

@@ -42,13 +42,6 @@ class Warnings(unittest.TestCase):
             with self.subTest(item=item):
                 self.assertEqual(av.warnings_html(item), "")
 
-    def test_target_not_in_request_sits_after_read_only(self):
-        item = {"warnings": [{"code": "not_mentioned_in_answer", "message": "a"},
-                             {"code": "target_not_in_request", "message": "b"},
-                             {"code": "request_read_only", "message": "c"}]}
-        self.assertEqual([w["code"] for w in av.warnings_of(item)],
-                         ["request_read_only", "target_not_in_request", "not_mentioned_in_answer"])
-
     def test_unknown_code_still_shown_last(self):
         item = {"warnings": [{"code": "new_kind", "message": "Something new."},
                              {"code": "answer_claims_done", "message": "Claims done."}]}
