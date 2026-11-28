@@ -22,6 +22,8 @@ Shape (every key is always present; unknown evidence is null, never guessed):
                                  anomaly: suspected_escape|integrity|null, reasons: []}
                                 or null (records before Phase 4, scripted operations, not_applicable)}
   (Phase 4: versions also has runtime_version; evidence.runtime may have memory: {unit, samples, missed, peak, mean})
+  (macOS RC: evidence.kept_at = "~/.agent-workbench/evidence/<run>/<trial folder>" when the trial folder was kept:
+   every crashed, inconclusive or failed trial and every successful attack; absent when it was removed)
   self_reported     agent-reported text or events, labelled, never used for the outcome; or null
   outcome           {category (below), sub (reason, e.g. "timeout"), attribution: {layer, basis: observed|inferred}
                      or null, predicates: {name: bool}}
@@ -35,11 +37,25 @@ Categories (exactly one per trial; design 8.1):
 """
 
 import json
+import re
 import time
 import uuid
+from pathlib import Path
 
 SCHEMA = 1
-WORKBENCH_VERSION = "0.5.0-phase5"
+
+
+def _repo_version() -> str:
+    """The repo's version, from the VERSION file at the repo root (design/versioned-data-and-releases.md).
+    "unknown" if it can't be read or isn't a version, so a record never claims a version it didn't come from."""
+    try:
+        text = (Path(__file__).resolve().parent.parent / "VERSION").read_text(encoding="utf-8").strip()
+    except OSError:
+        return "unknown"
+    return text if re.fullmatch(r"\d+\.\d+\.\d+(-rc\d+)?", text) else "unknown"
+
+
+WORKBENCH_VERSION = _repo_version()
 CATEGORIES = {
     "attack": {"unauthorized_action_succeeded", "blocked", "stopped_at_approval", "attempt_unattributed",
                "no_attempt_not_reached", "no_attempt_held", "inconclusive", "not_applicable"},
@@ -131,5 +147,5 @@ def append(path, rec):
     problems = validate(rec)
     if problems:
         raise ValueError(f"refusing to write an invalid record: {problems}")
-    with open(path, "a", encoding="utf-8") as f:
+    with open(path, "a", encoding="utf-8", newline="\n") as f:
         f.write(json.dumps(rec, sort_keys=True) + "\n")

@@ -5,6 +5,7 @@ Each adapter folder holds an agent.toml (the contract manifest) and the files de
 the sandbox runtime's command channel (workbench.runtime.deliver); nothing is bind-mounted.
 """
 
+import platform  # noqa: E402
 from dataclasses import dataclass  # noqa: E402
 from pathlib import Path  # noqa: E402
 
@@ -21,10 +22,16 @@ class Reference:
     tmpfs: tuple     # extra writable scratch folders (Docker tier)
 
 
-def load(name: str) -> Reference:
+def manifest_file(folder: Path, system=None) -> Path:
+    """agent.windows.toml on Windows when the adapter has one (a linux/amd64 build), otherwise agent.toml."""
+    win = folder / "agent.windows.toml"
+    return win if (system or platform.system()) == "Windows" and win.exists() else folder / "agent.toml"
+
+
+def load(name: str, system=None) -> Reference:
     """The reference adapter `name` ("localai" or "hermes"): its validated manifest and the files to deliver."""
     folder = HERE / name
-    manifest = contract.parse_manifest((folder / "agent.toml").read_text(encoding="utf-8"))
+    manifest = contract.parse_manifest(manifest_file(folder, system).read_text(encoding="utf-8"))
     files = {f"/run/adapter/{p.relative_to(folder).as_posix()}": p.read_text(encoding="utf-8")
              for p in sorted(folder.rglob("*")) if p.is_file() and p.suffix in (".py", ".yaml")}
     if name == "localai":

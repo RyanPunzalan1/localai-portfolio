@@ -7,6 +7,8 @@ Docker, sbx or model is needed. Synthetic data only.
 import base64
 import http.client
 import json
+import os
+import signal
 import sys
 import threading
 import time
@@ -175,15 +177,43 @@ class ToolNameTests(unittest.TestCase):
         self.assertEqual(mp.tool_names(b'[1,2]'), [])
 
 
+def wait_for_record(policy, timeout=5.0):
+    """The policy records a forwarded call after it has streamed the reply, so the client can see the reply first."""
+    end = time.time() + timeout
+    while time.time() < end:
+        found = [r for r in list(policy.records) if r["decision"] == "forwarded"]
+        if found:
+            return found
+        time.sleep(0.02)
+    return []
+
+
 class ChannelEndToEndTests(unittest.TestCase):
     """The real shim as a local subprocess (standing in for the sandbox), the real host channel, a fake model."""
 
     def setUp(self):
         self.model = FakeModel()
         self.policy = mp.ModelPolicy("hermes3", max_tokens=100, canaries={"c": CANARY})
-        cmd = [sys.executable, "-c", ch.SHIM_SOURCE, "--port", "0"]
+        # -X faulthandler: if the shim hangs, SIGABRT makes it print every thread's stack to stderr
+        cmd = [sys.executable, "-X", "faulthandler", "-c", ch.SHIM_SOURCE, "--port", "0"]
         self.chan = ch.Channel(cmd, self.policy, upstream=self.model.url, approval="deny_all")
-        self.assertTrue(self.chan.wait_ready(30), self.chan.violation)
+        started = time.time()
+        if not self.chan.wait_ready(30):
+            # say why: a still-running shim is aborted so faulthandler shows where it is stuck
+            if self.chan.proc.poll() is None:
+                if os.name != "nt":
+                    self.chan.proc.send_signal(signal.SIGABRT)
+                    try:
+                        self.chan.proc.wait(timeout=10)
+                    except Exception:
+                        pass
+                if self.chan.proc.poll() is None:
+                    self.chan.proc.kill()
+            self.chan.proc.wait(timeout=10)
+            err = self.chan.proc.stderr.read()[-3000:].decode("utf-8", "replace")
+            self.model.stop()
+            self.fail(f"the shim was not ready after {time.time() - started:.0f}s: violation={self.chan.violation!r}, "
+                      f"returncode={self.chan.proc.returncode}, port={self.chan.port}, stderr={err!r}")
 
     def tearDown(self):
         self.chan.close()
@@ -208,7 +238,7 @@ class ChannelEndToEndTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertIn(b"read_file", body)                       # streamed chunks reassembled
         self.assertEqual(self.model.seen[0][1]["max_tokens"], 100)
-        rec = [r for r in self.policy.records if r["decision"] == "forwarded"][0]
+        rec = wait_for_record(self.policy)[0]
         self.assertEqual((rec["canaries_in_prompt"], rec["tool_calls_requested"]), (["c"], ["read_file"]))
 
     def test_admin_calls_never_reach_the_model_server(self):
@@ -230,6 +260,26 @@ class ChannelEndToEndTests(unittest.TestCase):
             t.join(30)
         self.assertEqual(results, [200, 200, 200])
         self.assertIsNone(self.chan.violation)
+
+
+class ShimStartupTests(unittest.TestCase):
+    def test_shim_does_not_look_up_a_host_name(self):
+        # socket.getfqdn hung on GitHub's macOS runner; the shim must open its port without any DNS query
+        import ast
+        tree = ast.parse(ch.SHIM_SOURCE)
+        names = {n.attr for n in ast.walk(tree) if isinstance(n, ast.Attribute)}
+        self.assertNotIn("getfqdn", names)
+        ns = {}
+        exec(compile(ch.SHIM_SOURCE.replace('if __name__ == "__main__":', "if False:"), "shim", "exec"), ns)
+        import socket
+        from unittest import mock
+        with mock.patch.object(socket, "getfqdn", side_effect=AssertionError("DNS lookup")):
+            srv = ns["Server"](("127.0.0.1", 0), ns["Handler"])
+        try:
+            self.assertEqual(srv.server_name, "127.0.0.1")
+            self.assertGreater(srv.server_port, 0)
+        finally:
+            srv.server_close()
 
 
 class HostileShimTests(unittest.TestCase):

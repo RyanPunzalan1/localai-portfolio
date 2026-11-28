@@ -1,0 +1,12 @@
+{
+  "batch_id": "24e7aee6",
+  "planned": 2,
+  "completed": 1,
+  "stopped": true,
+  "anomaly": "integrity",
+  "reasons": [
+    "inventory: volumes appeared: wb-phase4-planted-20261127-195914"
+  ],
+  "stopped_at": 0,
+  "message": "INTEGRITY ANOMALY: the batch is stopped. Evidence is kept; the sandbox was removed.\n  - inventory: volumes appeared: wb-phase4-planted-20261127-195914\nKept trial folders: ~/.agent-workbench/evidence/<run id>/\nNothing was retried."
+}

@@ -5,6 +5,7 @@ Everything here is pure Python with no dependencies, so it is easy to test.
 """
 
 import html
+import os
 import re
 from pathlib import PurePath
 
@@ -21,6 +22,21 @@ WINDOWS_RESERVED = {
 # fetch a URL, which a prompt-injected answer could use to send data out.
 _MD_IMAGE = re.compile(r"!\[[^\]]*\]\([^)]*\)|!\[[^\]]*\]\[[^\]]*\]")
 _HTML_IMG = re.compile(r"<img\b[^>]*>", re.IGNORECASE)
+
+
+WINDOWS_CONTAINER_ONLY = (
+    "On Windows, LocalAI runs only in its Linux container (docker compose up). Its private files (the activity log and "
+    "the pending-write inbox) rely on Unix owner-only permissions, which NTFS does not have (decision 2026-11-28).")
+
+
+def _is_windows() -> bool:
+    return os.name == "nt"
+
+
+def require_posix_files() -> None:
+    """Refuse to write the app's owner-only files on native Windows, where 0o600 would silently do nothing."""
+    if _is_windows():
+        raise OSError(WINDOWS_CONTAINER_ONLY)
 
 
 def escape(text) -> str:

@@ -13,6 +13,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path[:0] = [str(ROOT), str(ROOT / "tests" / "fixtures"), str(ROOT / "experiments" / "checks")]
+from tests._platform import needs_symlink  # noqa: E402
 
 import phase3_scenarios_legacy as legacy  # noqa: E402
 import verify_report_numbers as vrn  # noqa: E402
@@ -96,6 +97,7 @@ class PackTests(unittest.TestCase):
                 'description = "A plain', 'description = "A  plain'))
             self.assertNotEqual(h1, S.load_pack(dst).hash)
 
+    @needs_symlink
     def test_pack_refuses_unlisted_and_linked_files(self):
         with tempfile.TemporaryDirectory() as d:
             dst = Path(d) / "core"

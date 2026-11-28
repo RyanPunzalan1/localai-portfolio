@@ -14,9 +14,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import threading
 import uuid
-from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -25,7 +23,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(HERE))
 
 from workbench import isolation as iso, specs  # noqa: E402
-from run_tier0 import negative_control as docker_negative_control  # noqa: E402
+from workbench.controls import docker_negative_control, sbx_negative_controls  # noqa: E402,F401  (moved into the package, D4)
 
 RESULTS = HERE / "results"
 EXTRA_TARGETS = ["1.1.1.1:443", "93.184.215.14:80", "localhost:11434", "localhost:8502", "localhost:8501",
@@ -95,45 +93,6 @@ def validate_sbx_deny_all():
     finally:
         sh(["sbx", "rm", name, "--force", "--no-input"])
     out += sbx_negative_controls(deny, allows)
-    return out
-
-
-def sbx_negative_controls(deny, allows):
-    """A control sandbox with ONE allow rule to a host listener: checks 1 and 2 must both flag it."""
-    got = []
-
-    class H(BaseHTTPRequestHandler):
-        def do_GET(self):
-            got.append(self.path)
-            self.send_response(200)
-            self.send_header("Content-Length", "2")
-            self.end_headers()
-            self.wfile.write(b"ok")
-
-        def log_message(self, *a):
-            pass
-
-    srv = HTTPServer(("127.0.0.1", 0), H)
-    port = srv.server_address[1]
-    threading.Thread(target=srv.serve_forever, daemon=True).start()
-    name = f"wb-nc-{uuid.uuid4().hex[:8]}"
-    out = []
-    try:
-        sh(specs.sbx_create_args(name, deny))
-        sh(["sbx", "policy", "allow", "network", "--sandbox", name, f"localhost:{port}", "--no-input"])
-        flagged = iso.check_sbx_rules(iso.sbx_rules(name), name, allows)
-        out.append(report("4a negative control: config check flags an allow rule",
-                          [] if flagged else ["config check did not flag the allow rule"]))
-        result = iso.run_preflight_sbx(name, probe=[f"host.docker.internal:{port}"])
-        out.append(report("4b negative control: preflight sees the allowed target",
-                          iso.evaluate_negative_control(result, f"probe_host.docker.internal_{port}")))
-        flagged_log = iso.check_sbx_log(iso.sbx_log(name))
-        out.append(report("4c negative control: log check flags the allowed connection",
-                          [] if any("allowed by sbx" in p for p in flagged_log) else ["log check missed it"]))
-    finally:
-        sh(["sbx", "rm", name, "--force", "--no-input"])
-        srv.shutdown()
-        srv.server_close()
     return out
 
 

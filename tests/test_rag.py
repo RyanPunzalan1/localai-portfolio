@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # project root
+from tests._platform import needs_symlink  # noqa: E402
 
 import rag
 
@@ -108,6 +109,7 @@ class IndexTests(unittest.TestCase):
         self.assertLessEqual(stats["largest_chunk_chars"], rag.CHUNK_CHARS)
         self.assertEqual({m["source"] for *_, m in col.items}, {"short.md", "long.md"})
 
+    @needs_symlink
     def test_symlinks_are_skipped(self):
         (self.docs / "link.md").symlink_to(self.docs / "short.md")
         col = FakeCollection()

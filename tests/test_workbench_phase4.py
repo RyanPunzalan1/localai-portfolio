@@ -4,11 +4,13 @@ and the batch runner's stop rules. No Docker, sbx or model needed; every case mu
 import os
 import sys
 import tempfile
+import threading
 import time
 import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from tests._platform import needs_symlink, needs_unix_modes  # noqa: E402
 
 from workbench import batch, isolation as iso, memory as mem, record as R, specs, trial, tripwire as tw, verdict  # noqa: E402
 
@@ -41,6 +43,7 @@ class TripwireTests(unittest.TestCase):
         self.t.path.write_text(text)
         self.assertNotEqual(self.t.check(), [])
 
+    @needs_unix_modes
     def test_mode_change_is_caught(self):
         os.chmod(self.t.path, 0o644)
         self.assertNotEqual(self.t.check(), [])
@@ -57,6 +60,7 @@ class TripwireTests(unittest.TestCase):
         self.t.path.unlink()
         self.assertIn("removed: tripwire.txt", self.t.check())
 
+    @needs_symlink
     def test_swap_for_a_link_is_caught(self):
         self.t.path.unlink()
         os.symlink("/etc/hosts", self.t.path)
@@ -71,6 +75,7 @@ class TripwireTests(unittest.TestCase):
         shutil.rmtree(self.t.dir)
         self.assertTrue(any(c.startswith("unreadable") for c in self.t.check()))
 
+    @needs_symlink
     def test_a_link_in_place_of_the_folder_is_refused(self):
         target = self.tmp / "real"
         target.mkdir()
@@ -82,6 +87,7 @@ class TripwireTests(unittest.TestCase):
         with self.assertRaises(tw.TripwireError):
             tw.Tripwire(self.tmp / "tw")  # tripwire.txt already exists: O_EXCL
 
+    @needs_symlink
     def test_remove_deletes_only_a_regular_file(self):
         self.t.path.unlink()
         os.symlink(self.tmp / "keep", self.t.path)
@@ -120,7 +126,8 @@ class SbxChecksTests(unittest.TestCase):
         return {"name": "wb-ag-1", "daemon_version": specs.SBX_VERSION, "created_version": specs.SBX_VERSION,
                 "host_mounts": [{"host_path": primary, "container_target": primary, "read_only": False},
                                 {"host_path": ws, "container_target": "/workspace", "read_only": False}],
-                "runtime_mounts": [], "mcp_servers": [], "mcp_mode": "static", "network_policy": {"scope": "sandbox"}}
+                "runtime_mounts": [], "mcp_servers": [], "mcp_mode": "static", "kits": [specs.SBX_KIT],
+                "network_policy": {"scope": "sandbox"}}
 
     def check(self, info):
         return iso.check_sbx_inspect(info, "wb-ag-1", "/t/ws", "/t/primary")
@@ -144,6 +151,9 @@ class SbxChecksTests(unittest.TestCase):
             "runtime mount": lambda i: i.update(runtime_mounts=["/var/run/docker.sock"]),
             "mcp server": lambda i: i.update(mcp_servers=["fs"]),
             "dynamic mcp": lambda i: i.update(mcp_mode="dynamic"),
+            "unpinned kit": lambda i: i.update(kits=["docker.io/sbx/shell:latest"]),
+            "extra kit": lambda i: i["kits"].append("org/mixin:latest"),
+            "no kits": lambda i: i.pop("kits"),
             "no mcp mode": lambda i: i.pop("mcp_mode"),
             "ports": lambda i: i.update(ports=["8080"]),
             "secrets": lambda i: i.update(secrets=["gh"]),
@@ -217,15 +227,19 @@ class MemoryTests(unittest.TestCase):
 
     def test_sampler_records_misses_not_guesses(self):
         vals = iter([10.0, None, 30.0])
+        got_all = threading.Event()
 
         def read():
             v = next(vals, None)
             if v is None and not hasattr(read, "raised"):
                 read.raised = True
                 raise OSError("ps failed")
+            if v == 30.0:
+                got_all.set()
             return v
         s = mem.Sampler(read, interval=0.01).start()
-        time.sleep(0.1)
+        # wait for the third reading instead of sleeping a fixed time: a loaded CI runner can delay the thread
+        self.assertTrue(got_all.wait(10), "the sampler did not take its third reading")
         out = s.stop()
         self.assertEqual(out["peak"], 30.0)
         self.assertGreaterEqual(out["missed"], 1)

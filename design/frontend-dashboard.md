@@ -215,6 +215,10 @@ operations and adding them together double-counts. When several runs are selecte
 
 Run: `docker compose up --build` (both apps), or without Docker: `.venv/bin/streamlit run security_dashboard.py --server.port 8502 --server.address 127.0.0.1`
 
+Known issue: the dashboard container reads `experiments/*/results` through bind mounts. After a branch switch or a big
+pull, the mounts can go stale and the dashboard then sees 0 results files. Fix: `docker compose restart dashboard`
+(no rebuild needed).
+
 ## 11. Build order
 
 1. `data.py` + tests. Done when the r2 control file's tallies match `forced-attempt-control-results.md`

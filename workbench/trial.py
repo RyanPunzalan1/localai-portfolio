@@ -10,6 +10,7 @@ schema-1 record. Any isolation problem or channel violation makes the trial inco
 import hashlib
 import json
 import os
+import platform
 import shutil
 import tempfile
 import uuid
@@ -18,6 +19,7 @@ from pathlib import Path
 from workbench import channel as ch, contract, digest, isolation as iso, memory as mem, model_policy as mp, record as R, \
     runtime, specs, verdict
 from workbench import tripwire as tw_mod
+from workbench import model_info
 
 MODEL = "gpt-oss-64k"  # the project's model (64K-window tag); hermes3 failed the benign control on the host too
 MAX_REPLY_TOKENS = 4096
@@ -33,16 +35,70 @@ def _fixture(root: Path, scn):
     docs = ws / "docs"
     docs.mkdir(parents=True)
     for name, text in scn["files"].items():
-        (docs / name).write_text(text, encoding="utf-8")
+        (docs / name).write_text(text, encoding="utf-8", newline="\n")  # LF on every platform
     if scn.get("secret_file"):
-        (ws / "secret.txt").write_text(scn["secret_file"], encoding="utf-8")
+        (ws / "secret.txt").write_text(scn["secret_file"], encoding="utf-8", newline="\n")
     for p in [ws, docs]:
         os.chmod(p, 0o777)  # the sandbox user (uid 1000) may differ from the host user on Linux
     return ws
 
 
+# Where kept evidence goes: a durable, owner-only folder (the system temp folder is cleared by macOS after a few days).
+EVIDENCE_DIR = Path.home() / ".agent-workbench" / "evidence"
+# Outcomes whose trial folder is kept (design 4.5, and owner rule 2026-11-25: preserve evidence for failed and
+# inconclusive trials). Clean results (completed, blocked, stopped at approval, no attempt, not applicable) are removed.
+KEEP_CATEGORIES = {"inconclusive", "failed_not_control", "false_positive", "unauthorized_action_succeeded",
+                   "attempt_unattributed", "observer_control_failed", "permitted_action_failed"}
+
+
+def _should_keep(rec, post, ev, tokens) -> bool:
+    if rec is None:  # the trial crashed: whatever exists is the only evidence
+        return True
+    return bool(post["trial"] or post["shared"] or post["inventory"] or post["other"] or _leaked(rec, tokens)
+                or ev.get("isolation_problems") or ev.get("channel_violation")
+                or rec["outcome"]["category"] in KEEP_CATEGORIES)
+
+
+def _home_relative(path: Path) -> str:
+    """Records never carry the user's home path (they may be shared); ~ stands for it."""
+    try:
+        return "~/" + path.resolve().relative_to(Path.home().resolve()).as_posix()
+    except ValueError:
+        return str(path)
+
+
+# D4: on Windows every trial runs at temperature 0 with one fixed seed, enforced by the model policy (not left to the agent).
+WINDOWS_SAMPLING = {"temperature": 0, "seed": 20261125}
+
+
+def sampling_for(system=None):
+    return dict(WINDOWS_SAMPLING) if (system or platform.system()) == "Windows" else None
+
+
+def _keep(root: Path, run_id: str) -> Path:
+    """Move a trial folder into EVIDENCE_DIR/<run>/; if that fails, keep it where it is. Never deletes."""
+    safe_run = "".join(c if c.isalnum() or c in "-_." else "_" for c in str(run_id))[:80] or "run"
+    dest_dir = EVIDENCE_DIR / safe_run
+    try:
+        EVIDENCE_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
+        dest_dir.mkdir(exist_ok=True, mode=0o700)
+        dest = dest_dir / root.name
+        shutil.move(str(root), str(dest))
+        if os.name == "nt":  # D7: mode bits mean nothing on NTFS, so set an explicit owner-only ACL
+            try:
+                from workbench import evidence_acl
+                evidence_acl.restrict(EVIDENCE_DIR, recursive=False)
+                evidence_acl.restrict(dest_dir)
+            except OSError as e:  # the evidence is kept either way; say so next to it
+                note = f"owner-only ACL failed: {e}" + chr(10)
+                (dest / "ACL-NOT-APPLIED.txt").write_text(note, encoding="utf-8", newline=chr(10))
+        return dest
+    except OSError:
+        return root
+
+
 def run_trial(reference, scn, profile_name, run_id, repeat=1, model=MODEL, negative_control_ok=None, debug=False,
-              guard=None):
+              guard=None, sampling=None, model_digest=None):
     """Run one scenario against one agent in one agent profile. Returns (record, details).
 
     guard: an optional batch guard (workbench.batch.Guard) with tokens() -> {name: tripwire token} and
@@ -52,6 +108,8 @@ def run_trial(reference, scn, profile_name, run_id, repeat=1, model=MODEL, negat
     """
     m = reference.manifest
     prof = specs.AGENT[profile_name]
+    if model_digest is None:  # which weights answered, from the local Ollama; None if it can't be read (never guessed)
+        model_digest = model_info.digest(model)
     rt = "sbx" if prof.network == "sbx-deny-all" else "docker"
     contract.require_pinned_for_tier(m, prof.tier)
     if rt == "sbx":
@@ -69,7 +127,7 @@ def run_trial(reference, scn, profile_name, run_id, repeat=1, model=MODEL, negat
     details = {"answer": "", "events": [], "policy_records": []}
     iso_state = {"config_ok": None, "preflight_ok": None, "runtime_log_ok": None, "negative_control_ok": negative_control_ok}
     post = {"trial": [], "shared": [], "inventory": [], "other": [], "kept_at": None}
-    tokens, rec = {}, None
+    tokens, rec, crash = {}, None, None
     try:
         if m.image_id and runtime.image_id(m.image) != m.image_id:
             raise contract.ContractError(f"local image {m.image} does not match the manifest's image_id")
@@ -79,7 +137,7 @@ def run_trial(reference, scn, profile_name, run_id, repeat=1, model=MODEL, negat
         if missing:
             rec = _record(run_id, repeat, scn, prof, m, rt, model, iso_state, ev, details,
                           {"category": "not_applicable", "sub": f"agent lacks: {', '.join(missing)}", "attribution": None,
-                           "predicates": {}}, runtime_version=runtime_version)
+                           "predicates": {}}, runtime_version=runtime_version, model_digest=model_digest)
             return rec, details
         # 0. host tripwires: one beside this trial's workspace (never inside a mount), plus the batch's shared one
         try:
@@ -110,7 +168,8 @@ def run_trial(reference, scn, profile_name, run_id, repeat=1, model=MODEL, negat
             # 2. deliver the adapter and task, start the channel, check isolation again with it running
             runtime.deliver(rt, name, {**reference.files, "/run/task.json": contract.task_file(scn["request"], name)})
             policy = mp.ModelPolicy(model, max_tokens=MAX_REPLY_TOKENS, max_calls=MAX_MODEL_CALLS,
-                                    canaries={**scn["values"], **tokens}, keep_reply_heads=700 if debug else 0)
+                                    canaries={**scn["values"], **tokens}, keep_reply_heads=700 if debug else 0,
+                                    **(sampling or {}))
             chan = ch.Channel(ch.shim_command(rt, name), policy, approval="deny_all")
             if not chan.wait_ready(60):
                 ev["channel_violation"] = chan.violation or "shim did not start"
@@ -119,7 +178,10 @@ def run_trial(reference, scn, profile_name, run_id, repeat=1, model=MODEL, negat
                                                 else iso.run_preflight_docker(name))
             if not during and not ev["channel_violation"]:
                 # 3. run the agent under a timeout
-                rc, out, err = runtime.exec_in(rt, name, list(m.entrypoint), env={**reference.env, "WORKBENCH_MODEL": model},
+                argv = list(m.entrypoint)
+                if rt == "sbx":  # tidy-up only, not a boundary (specs.SBX_AGENT_UNSET)
+                    argv = ["env", *[x for k in specs.SBX_AGENT_UNSET for x in ("-u", k)], *argv]
+                rc, out, err = runtime.exec_in(rt, name, argv, env={**reference.env, "WORKBENCH_MODEL": model},
                                                cwd="/workspace",
                                                timeout=m.timeout_seconds + 30)
                 ev["runtime"].update(exit_code=None if rc == -1 else rc, timed_out=rc == -1)
@@ -162,7 +224,10 @@ def run_trial(reference, scn, profile_name, run_id, repeat=1, model=MODEL, negat
         iso_state["problems"] = ev["isolation_problems"]
         outcome = verdict.decide(scn, m.level, ev)
         rec = _record(run_id, repeat, scn, prof, m, rt, model, iso_state, ev, details, outcome,
-                      runtime_version=runtime_version, extra_redact=tokens)
+                      runtime_version=runtime_version, extra_redact=tokens, sampling=sampling, model_digest=model_digest)
+    except BaseException as e:
+        crash = f"{e.__class__.__name__}: {contract.redact(str(e)[:500], {**scn.get('values', {}), **tokens})}"
+        raise
     finally:
         if sampler is not None:
             sampler.stop()
@@ -183,12 +248,23 @@ def run_trial(reference, scn, profile_name, run_id, repeat=1, model=MODEL, negat
                 post["shared"], post["inventory"] = guard.check()
             except Exception as e:  # an unreadable tripwire or inventory is an anomaly, never clean
                 post["other"].append(f"guard check failed: {e}")
-        if post["trial"] or post["shared"] or post["inventory"] or post["other"] or _leaked(rec, tokens):
-            post["kept_at"] = str(root)  # design 4.5: keep the evidence (synthetic fixture and tripwire only)
+        if _should_keep(rec, post, ev, tokens):
+            # design 4.5: keep the evidence (synthetic fixture, tripwire, and what the agent left in the workspace)
+            kept = _keep(root, run_id)
+            post["kept_at"] = _home_relative(kept)
+            if crash:
+                (kept / "crash.txt").write_text(crash + "\n", encoding="utf-8", newline="\n")
         else:
             shutil.rmtree(root, ignore_errors=True)
     if rec["outcome"]["category"] != "not_applicable":
         apply_integrity(rec, post, tokens)
+    if post["kept_at"]:
+        rec["evidence"]["kept_at"] = post["kept_at"]
+        try:
+            (Path(post["kept_at"].replace("~", str(Path.home()), 1)) / "record.json").write_text(
+                json.dumps(rec, indent=2, ensure_ascii=False), encoding="utf-8", newline="\n")
+        except OSError:
+            pass
     return rec, details
 
 
@@ -211,16 +287,27 @@ def apply_integrity(rec, post, tokens):
     return rec
 
 
+OWN_CODE = {"localai"}  # this project's own agent; any other agent is third-party code
+
+
+def profile_fields(prof, agent_name, system=None) -> dict:
+    """The record's profile block. On Windows the Docker tier adds a `label` saying what the owner accepted."""
+    out = {"name": prof.name, "tier": prof.tier, "network": prof.network}
+    label = specs.tier_label(prof.tier, system or platform.system(), agent_name.split("-")[0] in OWN_CODE)
+    return {**out, "label": label} if label else out
+
+
 def _record(run_id, repeat, scn, prof, m, rt, model, iso_state, ev, details, outcome, runtime_version=None,
-            extra_redact=None):
+            extra_redact=None, sampling=None, model_digest=None):
     values = {**scn["values"], **(extra_redact or {})}
     return R.new_record(
         run_id=run_id, repeat=repeat,
         scenario={"id": scn["id"], "version": scn.get("version", 1), "kind": scn["kind"],
                   "hash": scn.get("hash") or scenario_hash(scn), "pack": scn.get("pack")},
-        profile={"name": prof.name, "tier": prof.tier, "network": prof.network},
+        profile=profile_fields(prof, m.name),
         agent={"name": m.name, "image_digest": m.image_id or (m.image if m.pinned else None), "contract_level": m.level},
-        versions={"runtime": rt, "runtime_version": runtime_version, "model": model},
+        versions={"runtime": rt, "runtime_version": runtime_version, "model": model, "model_digest": model_digest,
+                  **({"sampling": sampling} if sampling else {})},
         isolation={**iso_state, "problems": ev.get("isolation_problems", [])},
         evidence={"workspace": ev["workspace"], "model_channel": ev["model_channel"], "approvals": ev["approvals"],
                   "runtime": ev["runtime"]},

@@ -1,0 +1,21 @@
+# A test fixture for the pack contract (tests/test_pack_contract.py), not a real pack.
+name = "bad-manifest"
+version = "0.1.0"
+api_version = 1
+purpose = "Fixture."
+prompt = "Fixture prompt."
+shell = true
+
+[[tools]]
+name = "read_note"
+writes = false
+
+[[tools]]
+name = "add_note"
+writes = true
+
+[permissions]
+read = ["notes.md"]
+write = ["notes.md"]
+write_modes = ["append"]
+model = true

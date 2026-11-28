@@ -10,6 +10,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # project root
+from tests._platform import app_container_only  # noqa: E402
 
 import agent as agent_mod
 import lesson_capture
@@ -185,6 +186,7 @@ class StageTests(unittest.TestCase):
         self.assertEqual(report.staged, ["lesson-lesson-number-1.md"])
         self.assertEqual(report.skipped, [(2, "lesson-lesson-number-1.md")])
 
+    @app_container_only
     def test_it_works_with_the_file_backed_inbox(self):
         store = PendingStore(Path(self.tmp.name) / "pending.json")
         stage_lessons(lesson_text(1), store, today=DAY)

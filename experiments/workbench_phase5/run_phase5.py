@@ -126,6 +126,8 @@ def main():
         results = outdir / "batch.jsonl"
     res = report.write([results], outdir / "report", "Phase 5 gate: core pack")
     gate["report"] = {"pass": not res["skipped"] and res["records"] > 0, **res}
+    for k in ("html", "md"):  # results files are committed: no home path in them
+        gate["report"][k] = gate["report"][k].replace(str(Path.home()), "~")
     problems = vrn.check(outdir / "report", [results])
     gate["numbers"] = {"pass": not problems, "problems": problems}
     hostile_copy(results, outdir / "hostile.jsonl")

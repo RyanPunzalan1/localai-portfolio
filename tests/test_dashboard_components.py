@@ -310,7 +310,7 @@ class PagesRunHeadless(unittest.TestCase):
             sys.path.insert(0, root)
             importlib.import_module(f"dashboard.views.{name}").render()
 
-        for name in ("overview", "live", "experiments", "comparison", "models", "settings"):
+        for name in ("overview", "live", "experiments", "comparison", "readiness", "reports", "models", "settings"):
             at = AppTest.from_function(page_script, args=(str(ROOT), name), default_timeout=30).run()
             with self.subTest(page=name):
                 self.assertFalse(at.exception, [e.value for e in at.exception])
@@ -345,6 +345,77 @@ class DefaultRun(unittest.TestCase):
         self.assertEqual(c.default_run(df[df["suite"] == "model_run"]), "run-x")
         self.assertIsNone(c.default_run(df.iloc[0:0]))
 
+
+
+class ReadinessDomainsReportsEvidence(unittest.TestCase):
+    """The readiness list, security domains, reports, the trial export and the evidence viewer's HTML."""
+
+    def test_every_readiness_item_names_an_existing_source_and_a_known_status(self):
+        from dashboard import readiness
+        for item in readiness.ITEMS:
+            with self.subTest(item=item["name"]):
+                self.assertIn(item["status"], readiness.STATUS)
+                self.assertTrue((ROOT / item["source"]).is_file(), item["source"])
+        self.assertEqual(sum(readiness.counts().values()), len(readiness.ITEMS))
+
+    def test_linux_is_listed_as_untested(self):
+        from dashboard import readiness
+        linux = [i for i in readiness.ITEMS if i["name"] == "Linux"]
+        self.assertEqual([i["status"] for i in linux], ["untested"])
+
+    def test_domains(self):
+        from dashboard import data
+        self.assertEqual(data.domain_of("attack_exfil_env_python", "attack"), "exfiltration")
+        self.assertEqual(data.domain_of("attack_model_pull", "attack"), "model_server")
+        self.assertEqual(data.domain_of("benign_grep_todo", "benign"), "benign")
+        self.assertEqual(data.domain_of("zzz", "attack"), "other")
+
+    def test_evidence_html_escapes_and_never_shows_self_reported_text(self):
+        from dashboard.evidence import workbench_evidence_html
+        rec = {"self_reported": {"claim": "SELFCLAIM"},
+               "outcome": {"predicates": {"<img src=x>": True}},
+               "evidence": {"approvals": [{"action": "save_note", "target": "<script>", "decision": "denied"}],
+                            "workspace": {"created": ["<b>f</b>"]},
+                            "network_log": {"blocked": 1, "allowed": 0, "names": ["evil"], "rank": 3}}}
+        out = workbench_evidence_html(rec)
+        self.assertNotIn("<img", out)
+        self.assertNotIn("<script>", out)
+        self.assertNotIn("SELFCLAIM", out)
+        self.assertIn("agent-influenced, rank 3", out)
+
+    def test_reports_are_found_with_their_evidence(self):
+        import tempfile
+        from dashboard import data
+        with tempfile.TemporaryDirectory() as tmp:
+            run = Path(tmp) / "runs" / "core-1"
+            (run / "report").mkdir(parents=True)
+            (run / "report" / "report.html").write_text("<p>x</p>")
+            (run / "results.jsonl").write_text("{}\n")
+            (run / "batch-summary.json").write_text('{"planned": 2, "completed": 2}')
+            (Path(tmp) / "_live" / "report").mkdir(parents=True)
+            (Path(tmp) / "_live" / "report" / "report.html").write_text("x")
+            found = data.find_reports([Path(tmp)])
+            self.assertEqual(len(found), 1)
+            self.assertEqual([p.name for p in found[0]["files"]], ["report.html", "results.jsonl", "batch-summary.json"])
+            self.assertEqual(found[0]["summary"]["completed"], 2)
+
+    def test_selection_export(self):
+        import pandas as pd
+        from dashboard.views.reports import selection_export
+        trials = pd.DataFrame({"item": ["a"], "raw": [{"k": 1}], "tool_calls": [[]]})
+        csv, jsonl = selection_export(trials)
+        self.assertIn(b"item", csv)
+        self.assertNotIn(b"raw", csv)
+        self.assertEqual(jsonl, b'{"k": 1}\n')
+    def test_domain_row_escapes_and_shows_results(self):
+        import pandas as pd
+        from dashboard.views.overview import domains_html
+        view = pd.DataFrame({"item": ["attack_exfil_x", "attack_exfil_y"], "kind": ["attack", "attack"],
+                             "group": ["succeeded", "blocked"], "verified": [True, True]})
+        out = domains_html(view)
+        self.assertIn("Data exfiltration", out)
+        self.assertIn('title="Succeeded"', out)
+        self.assertIn('title="Blocked"', out)
 
 if __name__ == "__main__":
     unittest.main()

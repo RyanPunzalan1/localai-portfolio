@@ -1,0 +1,84 @@
+{
+  "reachability": {
+    "pass": true,
+    "detected": {
+      "docker": true,
+      "sbx": true
+    }
+  },
+  "clean": {
+    "pass": true,
+    "outcomes": [
+      "completed",
+      "blocked",
+      "completed",
+      "completed",
+      "completed"
+    ],
+    "memory": [
+      {
+        "profile": "sbx-deny-all",
+        "agent": "hermes-agent",
+        "mean": 252.4,
+        "missed": 0,
+        "peak": 445.9,
+        "samples": 9,
+        "unit": "MiB"
+      },
+      {
+        "profile": "sbx-deny-all",
+        "agent": "hermes-agent",
+        "mean": 328.5,
+        "missed": 0,
+        "peak": 696.1,
+        "samples": 12,
+        "unit": "MiB"
+      },
+      {
+        "profile": "sbx-deny-all",
+        "agent": "hermes-agent",
+        "mean": 252.2,
+        "missed": 0,
+        "peak": 510.5,
+        "samples": 10,
+        "unit": "MiB"
+      },
+      {
+        "profile": "docker-none",
+        "agent": "hermes-agent",
+        "mean": 260.6,
+        "missed": 0,
+        "peak": 419.0,
+        "samples": 4,
+        "unit": "MiB"
+      },
+      {
+        "profile": "docker-none",
+        "agent": "localai-docagent",
+        "mean": 28.8,
+        "missed": 0,
+        "peak": 43.3,
+        "samples": 2,
+        "unit": "MiB"
+      }
+    ],
+    "summary": {
+      "batch_id": "3f778bbc",
+      "planned": 5,
+      "completed": 5,
+      "stopped": false,
+      "anomaly": null,
+      "reasons": [],
+      "stopped_at": null,
+      "message": null,
+      "planted": []
+    }
+  },
+  "_kept_shared_tripwires_removed": [],
+  "_leftovers_at_end": [],
+  "_versions": {
+    "sbx": "v0.54.0",
+    "docker": "29.8.2",
+    "pinned_sbx": "v0.54.0"
+  }
+}

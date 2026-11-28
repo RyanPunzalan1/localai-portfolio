@@ -6,48 +6,37 @@ the approval flow or file-access rules, so they need the owner's yes before they
 
 ## Current phase
 
-**Status as of 2026-10-10 (evening).** Phases 1 to 5 are built and measured. A memory feature
-(lessons) was added in parallel by another session (design/lessons.md). Phases 6 and 8 are not
-started. Path: local-first (Option A below). **Two sessions work in this folder:** one on security
-fixes (this log's "security fix" entries), one on lessons and the UI. Read `git status` before
-committing, because `app.py` is edited by both.
+**Status as of 2026-11-28.** The project now has two parts: the **LocalAI chat app** (this roadmap) and the **agent
+security workbench** (`design/security-workbench-design.md`, Phases 1 to 6 done; release notes in
+`workbench/RELEASE_NOTES.md`). Since 2026-10-10 most work went into the workbench. The 2026-10-10 status is kept in the
+progress log below.
 
 | Area | Status | Evidence |
 |---|---|---|
-| Coordinator, DocAgent, TaskAgent, approvals inbox, activity log | Built. The activity log now records lengths, not what you type, and the log and inbox files are owner-only (0600). Checked through the coordinator with dummy data | commit 7c99a79 |
-| Handoffs (Phase 3) | Built: a "Save as a note" button, a code step (no model), hop limit 2; handoff eval 5/5 | design/brain.md |
-| Code review | Built, **hints only**: review-quality target not met (0 of 3 real bugs, three models) | Progress log |
-| Lessons memory | Built by the other session: LessonsAgent, paste box, model-free recall eval. A read-only Lessons tab is **uncommitted** | design/lessons.md, design/lesson-capture.md |
-| Evals | Tool-choice evals (hermes3, routing and tool choice, now with lessons cases), review evals, handoff eval (5/5, no model), recall eval (model-free) | Phase 5 results, lessons entries |
-| Security | Threat model; telemetry off; links neutralized; image scanned; Docker hardened (read-only file system, no capabilities, memory and process limits); log redaction; write-guard tests; secret scan (gitleaks) in pre-commit | design/threat-model.md, commits 9de4271, ce36d49, 7c99a79 |
-| Quality gates in CI | Three jobs: `unit` (12 test files and 2 offline evals), `lint` (ruff, pip-audit), `image-scan` (Trivy). **Results not checked**: no `gh` on this Mac, and GitHub's public API returned "Not Found" (private repo or no runs) | .github/workflows/tests.yml |
-| Tests | **284 tests in 12 files under `tests/`** (10 skipped), all pass; run today | `python3 tests/<file>` |
-| Git | Branch `model-testing`, 14 commits ahead of `master`, pushed and in sync with `origin/model-testing`. `CLAUDE.md` edit is committed. Uncommitted: the Lessons tab (`app.py`, `lessons.py`, `tests/test_lessons.py`, one roadmap entry), all from the other session | `git status` |
+| Coordinator, DocAgent, approvals inbox, activity log | Built. Activity log records lengths, not text; log and inbox are owner-only | commit 7c99a79 |
+| Packs (Phase 9) | Built: pack gateway and manifest checks, TaskAgent and LessonsAgent moved onto packs (`packs/tasks`, `packs/lessons`), loaded at startup | commits 1c82f72, b9b73af, 3ebfc8a, ac7c144 |
+| Model | `gpt-oss:20b` is the default (`LOCALAI_MODEL` overrides; `hermes3` fallback). Agent replies capped at 4096 tokens. Every Ollama call has a time limit (2026-11-28) | commits c5bc8f3, 914afbc |
+| Approval safety | The inbox shows what each proposal was made after (files read, retrieved, named) and reviewer warnings. Display only. 42 realistic runs: attack proposals flagged 3 of 3, no file changed | commits 914afbc, 9a2ea26, 6a5f482 |
+| RAG | Bounded chunks, in-process ChromaDB | commit 914afbc |
+| Code review | **Removed** (2026-10-30): the local model found too few real bugs | commit 20310d8 |
+| Security dashboard | A separate read-only Streamlit app on `127.0.0.1:8502` | commit 914afbc, `design/frontend-dashboard.md` |
+| Windows | The chat app runs on Windows only in its Linux container (owner decision 2026-11-28) | commit 879f827 |
+| CI | Unit tests and `reproduce` on Ubuntu, macOS and Windows (all blocking), `ruff`, `pip-audit`, Trivy image scan, diagrams. All green on 2026-11-28 | `.github/workflows/tests.yml` |
+| Tests | 786 unit tests, all pass (33 skipped with reasons) | `python -m unittest discover -s tests` |
+| Development safety | Claude Code's sandbox blocks shell reads of `docs/` and the home folder; GitHub access limited to this repo by a fine-grained token; pushes ask first | commits 939008b, 1bb6d7e |
+| Git | Work happens on `master`. `model-testing` is an old branch | `git branch -a` |
 
-**Open decisions for the owner:** S.1 (block Grep and Glob); check the GitHub Actions page for the
-three CI jobs; whether to remove the unused models `qwen3:14b` and `gpt-oss:20b`; whether to do
-the approval-safety fixes below once `app.py` is free.
+Threat model: `design/threat-model.md` (refreshed 2026-11-28).
 
-### Current step
+### Open for the chat app
 
-**Security fix 2 (threat model gap 2, wrong approvals): ready to start, waiting on the owner's go and
-on `app.py`.** The Lessons tab edits in `app.py` are uncommitted and belong to the other session, so
-my edit would be mixed with them. Start when that work is committed, or keep my `app.py` edit to a
-few lines.
-
-- **Goal:** make a wrong approval harder to make and cheaper to undo. (a) A fixed banner whenever a
-  run leaves writes waiting: "N changes are waiting for your approval. Nothing is saved yet." decided by
-  code, not by the model's wording. (b) Show the final file name before approval (a clashing name
-  silently becomes `name_new1.md` today). (c) Optional: keep a copy of a file before any approved
-  append or mark-done, for a one-step undo.
-- **Files in scope:** `agent.py` and `brain.py` (final-name preview, optional undo store), `app.py`
-  (banner and preview, a few lines), `tests/test_tasks.py`, `tests/test_integration.py`, the docs.
-- **Done means:** new tests pass and all 12 test files still pass; a headless drive in a throwaway
-  folder shows the banner when a write is pending and the `_new1` rename before approval; threat model
-  gap 2 is updated; nothing from `docs/` is read.
-- **After it:** security fix 3 (gap 11): a prompt-injection eval with malicious dummy notes, and a
-  "came from reading files" label on writes proposed after a run that read file content.
-- **Not mine, in progress:** the Lessons tab (other session).
+| # | Item | Notes |
+|---|---|---|
+| Security fix 2 | Done 2026-11-28: the "N changes waiting" banner and what Approve will do on each card. **Undo is open**: it would keep file copies on disk, so it is an owner decision | **[approve]** for undo |
+| Gap 6 | Mostly done 2026-11-28: the app container has no network except a relay to the UI and Ollama; base image pinned by digest. Done 2026-11-28: the dashboard has no network either, and the container installs every package by hash (`requirements.lock`) | Hardening |
+| S.1 | Check that the Grep and Glob tools can't read `docs/` | The sandbox already blocks shell reads |
+| S.3, U.7 | Chat history persistence; browser check of the suggestion buttons | UI |
+| O.1 to O.4 | Browser check of the Lessons tab; lessons saves; routing of "note"; recall synonyms | From 2026-10-11 |
 
 ## Direction (proposed 2026-10-11, needs the owner's approval)
 
@@ -1069,26 +1058,26 @@ dependencies, or the update channel. Diagrams: design/architecture.md.
 
 | # | Task | Done when | Files | Approval |
 |---|---|---|---|---|
-| 9.1 | Write design/packs.md: manifest fields, gateway functions, loader rules | Owner approves the design | design/packs.md (new) | **[approve]** |
-| 9.2 | Capability gateway module that wraps the file guard, the approvals inbox, the log, and the untrusted-text wrapper | A test shows a pack cannot read or write outside `docs/` except through the gateway | new core module, tests | **[approve]** (file access) |
-| 9.3 | Move DocAgent and TaskAgent onto the interface, no behavior change | All test files pass and the routing and tool-choice evals give the same numbers | agent.py, task_agent.py, tests | |
-| 9.4 | Pack loader: read manifests, register agents, take router purposes from manifests | App lists the same agents as today; a pack with a bad manifest is refused with a clear message | app.py (few lines), loader, tests | **[approve]** |
+| 9.1 (done) | Write design/packs.md: manifest fields, gateway functions, loader rules | Owner approves the design | design/packs.md (new) | **[approve]** |
+| 9.2 (done) | Capability gateway module that wraps the file guard, the approvals inbox, the log, and the untrusted-text wrapper | A test shows a pack cannot read or write outside `docs/` except through the gateway | new core module, tests | **[approve]** (file access) |
+| 9.3 (done for TaskAgent and LessonsAgent) | Move DocAgent and TaskAgent onto the interface, no behavior change | All test files pass and the routing and tool-choice evals give the same numbers | agent.py, task_agent.py, tests | |
+| 9.4 (done) | Pack loader: read manifests, register agents, take router purposes from manifests | App lists the same agents as today; a pack with a bad manifest is refused with a clear message | app.py (few lines), loader, tests | **[approve]** |
 
-**Phase 10: pack contract and permissions**
-
-| # | Task | Done when | Files | Approval |
-|---|---|---|---|---|
-| 10.1 | Contract test suite pack authors run: path escape, symlink, hard link, injection, write needs approval | A deliberately bad dummy pack fails each check | tests/contract (new) | |
-| 10.2 | Enforce manifest permissions (read folders, propose writes, model use); no network or shell | A pack that reads an undeclared folder is refused | gateway, tests | **[approve]** |
-| 10.3 | CI runs the contract tests and the injection eval on every pull request | CI fails on a pack that breaks a rule | .github/workflows/tests.yml | |
-
-**Phase 11: versioned data and updates**
+**Phase 10: pack contract and permissions** (built 2026-11-28; design/pack-contract.md)
 
 | # | Task | Done when | Files | Approval |
 |---|---|---|---|---|
-| 11.1 | Schema version and migrations for the approvals file and logs | An old-format file loads and is upgraded, and a test shows pending items survive | pending_store.py, brain.py, tests | **[approve]** |
-| 11.2 | CHANGELOG.md, semantic versions, release tags | A tagged release lists what changed | repo root | |
-| 11.3 | Manual update check: user pulls a tagged release and the app verifies its hash. No auto-update | Documented and tested with a dummy release | docs, small script | **[approve]** (update channel) |
+| 10.1 (done) | Contract test suite pack authors run: path escape, symlink, hard link, injection, write needs approval | A deliberately bad dummy pack fails each check | tests/contract (new) | |
+| 10.2 (done) | Enforce manifest permissions (read folders, propose writes, model use); no network or shell | A pack that reads an undeclared folder is refused | gateway, tests | **[approve]** |
+| 10.3 (done; the injection eval needs the model, so its cases are required but it runs by hand) | CI runs the contract tests and the injection eval on every pull request | CI fails on a pack that breaks a rule | .github/workflows/tests.yml | |
+
+**Phase 11: versioned data and updates** (built 2026-11-28; design/versioned-data-and-releases.md)
+
+| # | Task | Done when | Files | Approval |
+|---|---|---|---|---|
+| 11.1 (done) | Schema version and migrations for the approvals file and logs | An old-format file loads and is upgraded, and a test shows pending items survive | pending_store.py, brain.py, tests | **[approve]** |
+| 11.2 (done) | CHANGELOG.md, semantic versions, release tags | A tagged release lists what changed | repo root | |
+| 11.3 (done; the signing key is the owner's to create) | Manual update check: user pulls a tagged release and the app verifies its hash. No auto-update | Documented and tested with a dummy release | docs, small script | **[approve]** (update channel) |
 
 **Phase 12: first real pack, private documents** (owner picks the real problem first)
 
@@ -1103,8 +1092,8 @@ dependencies, or the update channel. Diagrams: design/architecture.md.
 
 | # | Task | Done when | Files | Approval |
 |---|---|---|---|---|
-| 13.1 | Lock around "mark done" rewrites of tasks.md (gap 5) | A test with two writers loses no change | agent.py, tests | |
-| 13.2 | Timeout on the notes and tasks chat call (gap 4) | A hung model call stops with a clear error | agent.py, tests | |
+| 13.1 (done 2026-11-28) | Lock around "mark done" rewrites of tasks.md (gap 5) | A test with two writers loses no change | agent.py, tests | |
+| 13.2 (done 2026-11-28) | Timeout on the notes and tasks chat call (gap 4) | A hung model call stops with a clear error | agent.py, tests | |
 | 13.3 | One config place (model names, folders, limits) | No hard-coded model name outside config | new config module | |
 | 13.4 | Type checks (pyright) in CI on the safety files first | CI fails on a type error in safety.py, agent.py, brain.py | requirements-dev.txt, CI | **[approve]** (new dependency) |
 | 13.5 | Clear message when Ollama is down or the model is missing | UI shows what to do, not a stack trace | app.py (few lines), tests | |
@@ -1133,7 +1122,7 @@ Not started and not scheduled. **[approve]**.
 | S.4 (done) | Note to self: `logs/activity.jsonl` holds note text in plain text | Owner decides whether to redact tool arguments | brain.py | **[approve]** |
 | S.5 (done) | Turn off telemetry (Streamlit usage statistics, ChromaDB anonymized telemetry) | Config and client settings; a test fails if a ChromaDB client lacks the setting | .streamlit/config.toml, Dockerfile, app.py, unified_agent.py, test_security.py | |
 | S.6 (done) | Threat model | What is guarded, what is not, what is not verified | design/threat-model.md | |
-| S.7 (done) | Image scan | Trivy on the built image; results and reachability in the threat model; CI job added (not run) | .github/workflows/tests.yml | |
+| S.7 (done) | Image scan | Trivy on the built image; results and reachability in the threat model; runs in CI on every push | .github/workflows/tests.yml | |
 | S.8 (done) | Harden the container | Read-only file system, no Linux capabilities, no new privileges, 2 GB memory limit, 200 processes; only `docs/`, `logs/`, and two temp folders are writable | docker-compose.yml, Dockerfile | |
 | S.9 (done) | Lint, dependency audit, secret scan | ruff and pip-audit in CI; gitleaks in pre-commit; four ChromaDB advisories ignored on purpose (no fix, not reachable) | ruff.toml, .pre-commit-config.yaml, requirements-dev.txt, tests.yml | |
 | S.10 (done) | Keep user text out of the activity log | Requests and tool arguments are logged as lengths; files owner-only; log rotates at 1 MB | brain.py, pending_store.py | |
@@ -1150,7 +1139,7 @@ Not started and not scheduled. **[approve]**.
 | U.5 | Show the task list in the UI (read-only panel) | Panel shows tasks.md lines through list_tasks wrapper, no model call | app.py | |
 | U.7 | Suggestion buttons stay clickable after one is used | Browser check: click "What files do I have?", then "Summarize my notes", both work. Code done; browser check pending | app.py | |
 | U.9 | "How it works" tab (proposed): read-only. Lists the registered agents, their tools, what each can write, and the approval rules, read from the agent registry so it cannot drift. Shows the architecture as a pre-rendered image kept in the repo (no CDN, no outside request). Later it shows each pack's manifest | Tab loads with no errors; the agent list matches the registry in a test; the page makes no network call | app.py (new tab, few lines), assets/ | **[approve]** (app.py is edited by two sessions) |
-| U.8 | Hide the Streamlit Deploy button | Header has no Deploy button on localhost. Plan: add `toolbarMode = "viewer"` (under `[client]`) to the existing `.streamlit/config.toml`; the Dockerfile already copies that folder (added for the telemetry setting) | .streamlit/config.toml | |
+| U.8 (done 2026-11-28) | Hide the Streamlit Deploy button | Header has no Deploy button on localhost. Plan: add `toolbarMode = "viewer"` (under `[client]`) to the existing `.streamlit/config.toml`; the Dockerfile already copies that folder (added for the telemetry setting) | .streamlit/config.toml | |
 
 ## Portfolio evidence (review of "Evaluating Projects in the Claude Code Era")
 
@@ -1216,28 +1205,22 @@ H.2 status: 14 commits on branch `model-testing` (master is untouched), pushed a
 
 ## Suggested order
 
-Done: 2.5 to 2.9, Phase 3, Phase 4 (with the review-quality target unmet), Phase 5, P.1 to P.5, S.4
-to S.10, H.2, and the lessons memory (other session).
+Updated 2026-11-28. Done since the 2026-10-11 list: the pack interface (9.1 to 9.4), the provenance and reviewer
+warnings (security fix 3's "came from reading files" label), the model switch to `gpt-oss:20b` with reply caps and an
+agent timeout (most of 13.2), CI checked on GitHub, and the removal of the code review feature.
 
-Also done on 2026-10-11 (commit e44ca25): hard-link refusal in `_safe_path`, removal of the unused
-`check_target`, the prompt-injection eval (hermes3: 12 of 12 held, 9 of them reached the model), and the
-held-out review set (1 of 6 real bugs found). The "came from reading files" label from security fix 3 is
-not built.
+Done 2026-11-28: gaps 4 and 5 (13.1, 13.2): a time limit on every Ollama call, and mark-done keeps other changes.
+
+Done 2026-11-28: security fix 2 (a) and (b): the "changes waiting" banner and the exact effect of Approve on each card.
+Done 2026-11-28: Phase 10, the pack contract and permission enforcement (it also fixed a gateway hole with glob patterns).
+Done 2026-11-28: Phase 11, versioned data (inbox schema 2, set-aside files), `VERSION`, `CHANGELOG.md`, signed-tag checks
+(`scripts/release.py`) and an About line. The first signed release (`v0.7.0-rc2`) needs your signing key.
 
 Next:
-1. Owner: open the GitHub Actions page and confirm the `unit`, `lint`, and `image-scan` jobs pass;
-   tell me what fails.
-2. Owner: approve or change the direction in this file and design/architecture.md (packs in the repo,
-   manual updates, single machine first).
-3. Security fix 2 (wrong approvals: banner, final file name, optional undo). It touches `app.py`, so
-   start after the Lessons tab is committed.
-4. Phase 9 (pack interface), with the "How it works" tab (U.9) reading the registry. Design first (9.1).
-5. Phases 10 and 11 (contract tests, versioned data, updates), then Phase 12 (first real pack) once the
-   owner names the real problem. Interleave Phase 13 (production quality).
-6. README pass with the architecture diagram, eval table, and a demo; list all test files.
-7. Replace the bug-finding code review with "Explain this file" (owner decision: the local model found
-   0 of 3 and 1 of 6 real bugs).
-8. Owner approvals and checks: S.1 (block Grep and Glob), U.1 and U.7 browser checks.
-9. Phase 6 and Phase 8 (spreadsheets) feed Phase 12; Phase 14 (contribution workflow) follows Phase 10.
-10. Phase 15 (shared server) only after a login exists. U.8, S.3, and the unmeasured peak memory for a
-    long review (4.0) whenever convenient.
+1. Owner decision: undo for approved changes (security fix 2c). It keeps copies of files on disk. **[approve]**
+2. S.1 check, then U.7 (browser check). U.8 (hide Deploy) done 2026-11-28.
+3. Gap 6 is done (2026-11-28): no network for the app or the dashboard except their relays, the base image pinned
+   by digest, and every container dependency pinned by hash.
+4. Phase 12 once the owner names the real
+   problem. Interleave the rest of Phase 13.
+5. Phase 15 (shared server) only after a login exists.

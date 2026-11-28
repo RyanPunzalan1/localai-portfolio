@@ -14,9 +14,11 @@ from __future__ import annotations
 import altair as alt
 import pandas as pd
 
-CHART_COLORS = {"Succeeded": "#f0484f", "Blocked": "#22c55e", "Unattributed": "#f5c542", "No attempt": "#5f5f6b",
+CHART_COLORS = {"Succeeded": "#f0484f", "Blocked": "#15803d", "Unattributed": "#f5c542", "No attempt": "#5f5f6b",
+                "Stopped at approval": "#e9b730", "Not reached": "#6b7280", "Inconclusive": "#9ca3af",
                 "Other": "#f76b15"}
-OUTCOME_ORDER = ["Succeeded", "Unattributed", "Blocked", "No attempt", "Other"]
+OUTCOME_ORDER = ["Succeeded", "Stopped at approval", "Unattributed", "Blocked", "No attempt", "Not reached",
+                 "Inconclusive", "Other"]
 SELECTION = "pick"
 # Layer names become CSS classes in the rendered SVG (<name>_marks); dashboard.theme styles them.
 SEGMENTS, BAR_LABELS = "outcome_segments", "outcome_labels"
@@ -36,8 +38,9 @@ def outcome_long(counts: pd.DataFrame) -> pd.DataFrame:
     """outcome_counts() rows -> one row per (config, outcome segment) with n, total, share and a label."""
     rows = []
     for _, r in counts.iterrows():
-        parts = {"Succeeded": r["succeeded"], "Unattributed": r["unattributed"], "Blocked": r["blocked"],
-                 "No attempt": r["no_attempt"]}
+        parts = {"Succeeded": r["succeeded"], "Stopped at approval": r.get("stopped_at_approval", 0),
+                 "Unattributed": r["unattributed"], "Blocked": r["blocked"], "No attempt": r["no_attempt"],
+                 "Not reached": r.get("not_reached", 0), "Inconclusive": r.get("inconclusive", 0)}
         total = int(sum(parts.values()))
         if total == 0:
             continue
@@ -110,11 +113,13 @@ def selected_points(event) -> list[dict]:
 # only cue. Security outcomes keep the bar chart's colours; benign and control results use a neutral slate so
 # they never read as "blocked"; problems for legitimate work (false positive, control failed) are amber/orange.
 MATRIX_COLORS = {
-    "Succeeded": "#d03b3b", "Blocked": "#22c55e", "Unattributed": "#8a8aa3", "No attempt": "#5f5f6b",
+    "Succeeded": "#d03b3b", "Blocked": "#15803d", "Unattributed": "#8a8aa3", "No attempt": "#5f5f6b",
+    "Stopped at approval": "#e0a030", "Not reached": "#6b7280", "Inconclusive": "#9ca3af",
     "Completed": "#5d7290", "Control passed": "#7f93b3", "False positive": "#e0a030", "Control failed": "#ec835a",
     "Mixed": "#9b6fd0", "Unverified": "#a0a0ad", "Other": "#a0a0ad",
 }
-_DARK_TEXT = {"False positive", "Control failed", "Unverified", "Other", "Unattributed"}
+_DARK_TEXT = {"False positive", "Control failed", "Unverified", "Other", "Unattributed", "Stopped at approval",
+              "Inconclusive"}
 MATRIX_SELECTION = "cell"
 MATRIX_CELLS, MATRIX_TEXT = "matrix_cells", "matrix_text"
 
@@ -242,7 +247,7 @@ def outcome_donut(counts: pd.DataFrame) -> alt.TopLevelMixin | None:
 # ------------------------------------------------------------------ reference-style overview charts
 # Palette from the reference dashboard. Outcome colours: red = succeeded, orange = unattributed, mint = blocked,
 # blue = not attempted, yellow = other. Each colour always comes with a legend entry or label, never alone.
-REF_COLORS = {"red": "#e5534b", "orange": "#ee7d33", "yellow": "#e9b730", "blue": "#3b82f6", "mint": "#22c55e"}
+REF_COLORS = {"red": "#e5534b", "orange": "#ee7d33", "yellow": "#e9b730", "blue": "#3b82f6", "mint": "#15803d"}
 OUTCOME_REF = {"Succeeded": REF_COLORS["red"], "Unattributed": REF_COLORS["orange"],
                "Blocked": REF_COLORS["mint"], "No attempt": REF_COLORS["blue"], "Other": REF_COLORS["yellow"]}
 
@@ -348,15 +353,30 @@ def trials_per_day(daily: pd.DataFrame) -> alt.TopLevelMixin | None:
 
 
 def ring(counts: pd.DataFrame, category: str, value: str, colors: dict,
-         legend: str = "bottom") -> alt.TopLevelMixin | None:
-    """Donut of a category column, coloured from a mapping. Legend names each slice."""
+         legend: str = "bottom", size: int = 200, total: str | None = None) -> alt.TopLevelMixin | None:
+    """Donut of a category column, coloured from a mapping.
+
+    The chart stretches to its card's width at a fixed height, and the ring's radius comes from that height with a
+    margin, so the ring is never cropped and sits in the middle of the card. `total`, when given, is drawn in the
+    ring's centre by the chart itself, so it can't drift off-centre. With legend="none" the page draws its own legend.
+    """
     data = counts[counts[value] > 0]
     if data.empty:
         return None
     domain = list(data[category])
     scale = alt.Scale(domain=domain, range=[colors.get(c, REF_COLORS["yellow"]) for c in domain])
-    chart = alt.Chart(data).mark_arc(innerRadius=72, outerRadius=100, stroke=None).encode(
+    outer = size // 2 - 12
+    arcs = alt.Chart(data).mark_arc(innerRadius=int(outer * 0.74), outerRadius=outer, stroke=None).encode(
         theta=alt.Theta(f"{value}:Q", stack=True), color=alt.Color(f"{category}:N", scale=scale,
                                                                  legend=None if legend == "none" else alt.Legend(title=None, orient=legend, labelLimit=160)),
         tooltip=[alt.Tooltip(f"{category}:N"), alt.Tooltip(f"{value}:Q", title="Trials")])
-    return _configure(chart).properties(height=220)
+    layers = [arcs]
+    if total is not None:
+        centre = {"x": alt.value({"expr": "width / 2"}), "y": alt.value({"expr": "height / 2"})}
+        words = pd.DataFrame({"t": [str(total)], "c": ["Total"]})
+        # Layer names become CSS classes (<name>_marks), so dashboard.theme colours the text for light and dark.
+        layers.append(alt.Chart(words).mark_text(fontSize=26, fontWeight=600, dy=10)
+                      .encode(text="t:N", **centre).properties(name="ring_total"))
+        layers.append(alt.Chart(words).mark_text(fontSize=13, dy=-16)
+                      .encode(text="c:N", **centre).properties(name="ring_caption"))
+    return _configure(alt.layer(*layers)).properties(height=size)

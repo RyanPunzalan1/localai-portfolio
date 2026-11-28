@@ -9,6 +9,9 @@ import os
 import shutil
 import subprocess
 import sys
+from pathlib import Path as _P
+sys.path.insert(0, str(_P(__file__).resolve().parent.parent))
+from tests._platform import needs_symlink  # noqa: E402
 import tempfile
 import unittest
 from pathlib import Path
@@ -57,6 +60,7 @@ class WriteGuardPythonHookTest(unittest.TestCase):
     def test_claude_folder_is_protected(self):
         self.assertEqual(self.decision(self.root / ".claude" / "settings.json", tool="Edit"), "deny")
 
+    @needs_symlink
     def test_symlink_in_path_is_denied(self):
         target = self.outside / "real"
         target.mkdir()

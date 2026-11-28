@@ -5,11 +5,13 @@ Everything runs on the user's own machine. No cloud model APIs.
 
 ## Stack
 - Python, Streamlit UI (`app.py`)
-- Ollama running Hermes 3 (`hermes3`) for chat and tool calling
+- Ollama running `gpt-oss:20b` (`hermes3` is the fallback) for chat and tool calling
 - ChromaDB + `nomic-embed-text` for optional RAG over `docs/`
 - `agent.py`: tool-calling loop (`DocAgent`) with list_files, read_file, search_docs, save_note
-- Docker: only the Streamlit app is containerized. Ollama runs natively on the host
-  and the container reaches it through `OLLAMA_HOST=http://host.docker.internal:11434`.
+- Docker: the Streamlit app (and the security dashboard) are containerized. Ollama runs natively on the host.
+  The app container has no network of its own: it reaches Ollama through the relay container
+  (`port_relay.py`) at `OLLAMA_HOST=http://ollama.internal:11434`, and the browser reaches it through the same relay
+  on 127.0.0.1:8501 (`docker-compose.yml`).
 
 ## Run
 - Docker: `docker compose up --build` from the project root, then open http://localhost:8501
@@ -41,7 +43,7 @@ Everything runs on the user's own machine. No cloud model APIs.
 - When the user asks how something works, check the code rather than answering from memory.
 
 ## Choosing the Claude model (coding help only)
-- The Claude model affects coding help, not how the app runs. The app's model is `hermes3`.
+- The Claude model affects coding help, not how the app runs. The app's model is `gpt-oss:20b` (`hermes3` is the fallback).
 - Haiku: small, well-defined edits (one test, a one-line fix, a rename, running a command).
 - Sonnet: judgment work across several files, subtle bug review, diagnosing eval failures.
 - Opus: only after a Sonnet attempt failed or the design is hard. Slower and costlier.

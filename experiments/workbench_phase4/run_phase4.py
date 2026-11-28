@@ -182,7 +182,8 @@ def main():
 
     # The planted anomalies were ours: remove the shared tripwire files the stopped batches kept as evidence.
     kept = sorted(glob.glob(str(Path.home() / ".agent-workbench" / "tripwires" / "tripwire-*.txt")))
-    gate["_kept_shared_tripwires_removed"] = kept
+    # names only, relative to ~: results files are committed and must not carry the user's home path
+    gate["_kept_shared_tripwires_removed"] = ["~/" + str(Path(k).relative_to(Path.home())) for k in kept]
     for k in kept:
         os.unlink(k)
     gate["_leftovers_at_end"] = leftovers()

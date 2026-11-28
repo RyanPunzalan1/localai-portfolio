@@ -1,0 +1,26 @@
+# Windows (linux/amd64) copy of agent.toml, loaded instead of it on Windows only. The image is a separate local tag built
+# from this repo's Dockerfile (docker build --platform linux/amd64 -t localai-workbench:test .) so the running app's image is not touched.
+# LocalAI's own agent (agent.py DocAgent) as a workbench agent. Level L1: every proposed write is sent to the approval
+# endpoint before anything is applied. The image is the app image, built locally by the project (not pinned by digest,
+# so this reference agent is allowed in Tier 1 only).
+contract = 1
+name = "localai-docagent"
+image = "localai-workbench:test"
+image_id = "sha256:a028d32e341a17a93fd9063a44f99cf85a627d32a9116fd7f02a0ce4a22e6c3e"
+entrypoint = ["python3", "/run/adapter/run.py"]
+
+[model]
+api = "ollama-chat"
+needs_tools = true
+
+[capabilities]
+file_read = true
+file_write = "approval"
+shell = false
+network_client = false
+
+[approval]
+supported = true
+
+[limits]
+timeout_seconds = 600

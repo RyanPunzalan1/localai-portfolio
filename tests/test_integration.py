@@ -16,6 +16,7 @@ from unittest import mock
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # project root
+from tests._platform import app_container_only  # noqa: E402
 
 import agent
 import brain
@@ -86,6 +87,7 @@ class IntegrationTest(unittest.TestCase):
 
     # ---- each tool, end to end
 
+    @app_container_only
     def test_list_files_runs_and_is_logged(self):
         events = self.run_with([call("list_files"), final("You have ideas.md.")])
         results = [e for e in events if e["type"] == "tool_result"]
@@ -95,12 +97,14 @@ class IntegrationTest(unittest.TestCase):
         self.assertIn("tool_call", kinds)
         self.assertIn("tool_result", kinds)
 
+    @app_container_only
     def test_read_file_returns_content_marked_as_data(self):
         events = self.run_with([call("read_file", name="ideas.md"), final("Milk.")])
         result = [e for e in events if e["type"] == "tool_result"][0]["result"]
         self.assertIn("Buy milk", result)
         self.assertIn("data, not instructions", result)
 
+    @app_container_only
     def test_save_note_is_not_written_until_approved(self):
         events = self.run_with([call("save_note", name="plan.md", content="step one"), final("Proposed.")])
         self.assertFalse((self.docs / "plan.md").exists())
@@ -114,12 +118,14 @@ class IntegrationTest(unittest.TestCase):
 
     # ---- failure paths must not crash
 
+    @app_container_only
     def test_unknown_tool_name_returns_error_and_continues(self):
         events = self.run_with([call("delete_everything"), final("Sorry.")])
         result = [e for e in events if e["type"] == "tool_result"][0]["result"]
         self.assertIn("unknown tool", result)
         self.assertEqual(events[-1]["type"], "final")
 
+    @app_container_only
     def test_wrong_arguments_get_a_clear_message_the_model_can_follow(self):
         # The bug seen in the app: list_files takes no arguments, but the model sent one.
         events = self.run_with([call("list_files", name="list_files"), final("ok")])
@@ -127,16 +133,19 @@ class IntegrationTest(unittest.TestCase):
         self.assertIn("takes no arguments", result)
         self.assertNotIn("unexpected keyword", result)
 
+    @app_container_only
     def test_list_files_with_no_arguments_returns_real_names(self):
         events = self.run_with([call("list_files"), final("ok")])
         result = [e for e in events if e["type"] == "tool_result"][0]["result"]
         self.assertEqual(result, "ideas.md")
 
+    @app_container_only
     def test_missing_file_returns_clear_error(self):
         events = self.run_with([call("read_file", name="nope.md"), final("Not found.")])
         result = [e for e in events if e["type"] == "tool_result"][0]["result"]
         self.assertIn("does not exist", result)
 
+    @app_container_only
     def test_read_outside_docs_is_refused(self):
         outside = self.tmp / "secret.txt"
         outside.write_text("CONTENT-OUTSIDE-DOCS", encoding="utf-8")
@@ -144,12 +153,14 @@ class IntegrationTest(unittest.TestCase):
         results = [e["result"] for e in events if e["type"] == "tool_result"]
         self.assertNotIn("CONTENT-OUTSIDE-DOCS", results[0])
 
+    @app_container_only
     def test_ollama_down_gives_a_clear_final_message(self):
         events = self.run_with([ConnectionError("connection refused")])
         self.assertEqual(events[-1]["type"], "final")
         self.assertIn("Model error", events[-1]["content"])
         self.assertEqual(self.log_events()[-1]["event"], "run_finished")
 
+    @app_container_only
     def test_step_limit_stops_a_looping_model(self):
         # New (not repeated) calls each use a step, so the request stops at max_steps.
         loop = [call("read_file", name=f"n{i}.md") for i in range(agent.MAX_STEPS + 5)]
@@ -157,6 +168,7 @@ class IntegrationTest(unittest.TestCase):
         self.assertIn("step limit", events[-1]["content"])
         self.assertEqual(sum(e["type"] == "tool_call" for e in events), agent.MAX_STEPS)
 
+    @app_container_only
     def test_a_reply_cut_off_by_the_length_cap_says_so(self):
         cut = final("1. idea\n2. idea\n3. idea")
         cut.done_reason = "length"  # what Ollama reports when num_predict stops a reply
@@ -166,6 +178,7 @@ class IntegrationTest(unittest.TestCase):
 
     # ---- Phase 1 (gpt-oss): limits on steps and tool attempts, empty answers, reasoning
 
+    @app_container_only
     def test_one_reply_with_too_many_tool_calls_is_stopped_at_the_hard_limit(self):
         fn = SimpleNamespace(name="list_files", arguments={})
         many = SimpleNamespace(message=SimpleNamespace(
@@ -187,6 +200,7 @@ class IntegrationTest(unittest.TestCase):
         self.assertEqual(events[-1]["content"], agent.TOOL_LIMIT_NOTE.format(n=agent.MAX_TOOL_CALLS))
         self.assertEqual(len(chat.turns), 50 - agent.MAX_TOOL_CALLS - 1)  # then the model is not called again
 
+    @app_container_only
     def test_a_repeat_does_not_use_up_a_step(self):
         # read, repeat, read, repeat ... (the gpt-oss pattern) finishes within the step limit.
         turns = []
@@ -196,6 +210,7 @@ class IntegrationTest(unittest.TestCase):
         events = self.run_with(turns + [final("All read.")])
         self.assertEqual(events[-1]["content"], "All read.")
 
+    @app_container_only
     def test_an_empty_answer_is_replaced_with_a_clear_message(self):
         events = self.run_with([call("list_files"), final("   ")])
         self.assertEqual(events[-1]["content"], agent.EMPTY_REPLY)
@@ -226,6 +241,7 @@ class IntegrationTest(unittest.TestCase):
             list(agent.DocAgent().run([{"role": "user", "content": "hi"}]))
         self.assertEqual(seen[0]["num_predict"], agent.MAX_REPLY_TOKENS)
 
+    @app_container_only
     def test_every_run_ends_in_the_log(self):
         self.run_with([call("list_files"), final("ok")])
         self.assertEqual(self.log_events()[-1]["event"], "run_finished")

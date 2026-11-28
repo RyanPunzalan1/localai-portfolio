@@ -1,18 +1,21 @@
 # Security notes:
 # - The app has no login. The port is published on 127.0.0.1 only, so only this PC can reach it.
 #   Do not change this to "8501:8501" (that exposes it to your whole network). The same applies to the
-#   dashboard on 8502.
+#   dashboard on 8502 (published by its own relay, relay-dashboard).
 # - Ollama must stay on the host bound to 127.0.0.1 (its default). Setting OLLAMA_HOST=0.0.0.0
 #   on the host would open the model API to your network with no authentication.
+# - The chat app has no network route out (threat model gap 6). It sits on app_internal, an internal network with no
+#   gateway. The relay below is its only neighbour and gives it exactly two routes: the browser on this Mac to the UI,
+#   and the app to Ollama on the host. A bad dependency in the app can't reach the internet or anything else.
 services:
   localai:
     build: .
-    ports:
-      - "127.0.0.1:8501:8501"
     environment:
-      - OLLAMA_HOST=http://host.docker.internal:11434
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+      # The relay's name on app_internal. Ollama refuses a Host header it doesn't recognise (DNS-rebinding protection);
+      # names ending in .internal are accepted, "relay" is not (checked 2026-11-28: 403).
+      - OLLAMA_HOST=http://ollama.internal:11434
+    networks:
+      - app_internal
     volumes:
       - ./docs:/app/docs
       - ./logs:/app/logs
@@ -31,20 +34,49 @@ services:
     mem_limit: 2g
     pids_limit: 200
 
+  # The chat app's only connection to anything: two fixed TCP routes (port_relay.py, standard library, no parsing).
+  # On app_internal (to reach the app) and relay_out (for the published port and the host's Ollama). The dashboard is
+  # on neither network, so it can't reach the relay or Ollama through it.
+  relay:
+    build: .
+    command: ["python", "port_relay.py", "8501=localai:8501", "11434=host.docker.internal:11434"]
+    ports:
+      - "127.0.0.1:8501:8501"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      app_internal:
+        aliases:
+          - ollama.internal
+      relay_out: {}
+    depends_on:
+      - localai
+    restart: unless-stopped
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 128m
+    pids_limit: 50
+
   # Security evaluation dashboard: read-only views of the experiment results. Same image as the chat app
   # (built separately from the same Dockerfile, so the localai image name the experiments use is unchanged).
   # Like the chat app it has no login, so it is published on 127.0.0.1 only. It mounts only the results
   # folders, read-only, and never docs/ or logs/ (they hold personal data). It does not talk to Ollama.
+  # It needs no network at all: it is on dash_internal (no route out), and its own relay publishes its port.
   dashboard:
     build: .
     command: ["streamlit", "run", "security_dashboard.py", "--server.address=0.0.0.0", "--server.port=8502"]
-    ports:
-      - "127.0.0.1:8502:8502"
+    networks:
+      - dash_internal
     volumes:
       - ./experiments/local_agent/results:/app/experiments/local_agent/results:ro
       - ./experiments/hermes_agent/results:/app/experiments/hermes_agent/results:ro
       - ./experiments/workbench_phase2/results:/app/experiments/workbench_phase2/results:ro
       - ./experiments/workbench_phase3/results:/app/experiments/workbench_phase3/results:ro
+      - ./experiments/workbench_phase5/results:/app/experiments/workbench_phase5/results:ro
+      - ./experiments/workbench_phase6:/app/experiments/workbench_phase6:ro
     restart: unless-stopped
     read_only: true
     tmpfs:
@@ -56,3 +88,31 @@ services:
       - no-new-privileges:true
     mem_limit: 1g
     pids_limit: 100
+
+  # The dashboard's only connection: one route, the browser on this Mac to its UI. A separate relay from the chat
+  # app's, so the dashboard can't use a shared relay to reach the app's UI or Ollama.
+  relay-dashboard:
+    build: .
+    command: ["python", "port_relay.py", "8502=dashboard:8502"]
+    ports:
+      - "127.0.0.1:8502:8502"
+    networks:
+      - dash_internal
+      - relay_out
+    depends_on:
+      - dashboard
+    restart: unless-stopped
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 128m
+    pids_limit: 50
+
+networks:
+  app_internal:
+    internal: true  # no gateway: nothing on it can reach the host or the internet except through the relay
+  dash_internal:
+    internal: true  # the dashboard's own network, also with no route out
+  relay_out: {}

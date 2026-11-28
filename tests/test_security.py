@@ -158,7 +158,8 @@ class DocsToolsTest(unittest.TestCase):
             self.agent.approve_write(0)
 
 
-@unittest.skipUnless(shutil.which("powershell"), "PowerShell is needed for the hook tests")
+@unittest.skipUnless(os.name == "nt" and shutil.which("powershell"),
+                     "the PowerShell hook tests use Windows paths and cmd, so they need Windows PowerShell")
 class WriteGuardHookTest(unittest.TestCase):
     """Runs the real guard-writes.ps1 against a temporary workspace."""
 
@@ -387,8 +388,7 @@ class NoTelemetryTests(unittest.TestCase):
                 calls += 1
                 with self.subTest(file=path.name):
                     self.assertIn("anonymized_telemetry=False", match.group(1))
-        # app.py, plus old/unified_agent.py in the full project (the old/ prototypes are not in this public snapshot).
-        self.assertGreaterEqual(calls, 1)
+        self.assertGreaterEqual(calls, 2)  # app.py and unified_agent.py
 
     def test_dockerfile_copies_the_streamlit_config(self):
         dockerfile = (self.ROOT / "Dockerfile").read_text(encoding="utf-8")
@@ -410,6 +410,31 @@ class ModelTimeoutTests(unittest.TestCase):
         self.assertEqual(cls.call_args.kwargs.get("timeout"), agent.CHAT_TIMEOUT)
         self.assertGreater(agent.CHAT_TIMEOUT, 0)
         fake_client.chat.assert_called_once()
+
+    def test_no_untimed_ollama_call_anywhere_in_the_app(self):
+        # app.py and rag.py once called ollama.chat / ollama.list / ollama.embed directly, with no time limit.
+        # Every call must go through a Client built with a timeout (agent.ollama_client or rag's embed client).
+        import ast
+        for name in ("app.py", "rag.py", "agent.py"):
+            tree = ast.parse((ROOT_DIR / name).read_text(encoding="utf-8"))
+            direct = [n.lineno for n in ast.walk(tree)
+                      if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+                      and isinstance(n.func.value, ast.Name) and n.func.value.id == "ollama"
+                      and n.func.attr != "Client"]
+            self.assertEqual(direct, [], f"{name} calls ollama.<function> directly (no timeout) at lines {direct}")
+            clients = [n for n in ast.walk(tree) if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+                       and n.func.attr == "Client" and isinstance(n.func.value, ast.Name) and n.func.value.id == "ollama"]
+            for c in clients:
+                self.assertIn("timeout", [k.arg for k in c.keywords], f"{name}:{c.lineno} builds a Client without a timeout")
+
+    def test_rag_embedding_uses_a_timeout(self):
+        from unittest.mock import MagicMock
+        import rag
+        fake = MagicMock()
+        fake.embed.return_value = {"embeddings": [[0.1, 0.2]]}
+        with mock.patch.object(rag.ollama, "Client", return_value=fake) as cls:
+            rag.embed("some text")
+        self.assertEqual(cls.call_args.kwargs.get("timeout"), rag.EMBED_TIMEOUT)
 
     def test_timeout_during_run_becomes_a_message(self):
         def boom(**kwargs):

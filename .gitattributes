@@ -1,0 +1,16 @@
+# Line endings. Scenario and pack hashes, the shipped reference report and the reproduce check all depend on
+# exact bytes, so text files are always checked out with LF, on every platform (including Windows).
+* text=auto eol=lf
+
+# Binary files: never convert or diff.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.db binary
+*.sqlite binary
+*.sqlite3 binary
+*.zip binary
+*.gz binary

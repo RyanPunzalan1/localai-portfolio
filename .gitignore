@@ -15,3 +15,5 @@ infra/.terraform/
 infra/tfplan
 # Obsidian settings for the design/ vault (per-machine, not project content)
 design/.obsidian/
+# Written by scripts/release.py build-info; copied into the image, never committed
+build_info.json

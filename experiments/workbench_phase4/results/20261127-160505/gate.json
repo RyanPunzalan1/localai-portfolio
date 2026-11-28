@@ -1,0 +1,192 @@
+{
+  "forbidden": {
+    "pass": true,
+    "cases": [
+      "--privileged",
+      "--pid=host",
+      "-v /var/run/docker.sock:/s",
+      "--network host",
+      "--cap-add SYS_ADMIN",
+      "--security-opt seccomp=unconfined"
+    ]
+  },
+  "reachability": {
+    "pass": true,
+    "detected": {
+      "docker": true,
+      "sbx": true
+    }
+  },
+  "version": {
+    "pass": true,
+    "summary": {
+      "batch_id": "83d5554c",
+      "planned": 1,
+      "completed": 0,
+      "stopped": true,
+      "anomaly": "refused",
+      "reasons": [
+        "sbx version v0.54.0 is not the validated v0.0.0; refusing the VM tier"
+      ],
+      "stopped_at": 0,
+      "message": "REFUSED: the batch did not start this trial.\n  - sbx version v0.54.0 is not the validated v0.0.0; refusing the VM tier\nNothing was retried.",
+      "planted": []
+    }
+  },
+  "clean": {
+    "pass": true,
+    "outcomes": [
+      "completed",
+      "blocked",
+      "completed",
+      "completed",
+      "completed"
+    ],
+    "memory": [
+      {
+        "profile": "sbx-deny-all",
+        "agent": "hermes-agent",
+        "mean": 395.5,
+        "missed": 0,
+        "peak": 1054.0,
+        "samples": 12,
+        "unit": "MiB"
+      },
+      {
+        "profile": "sbx-deny-all",
+        "agent": "hermes-agent",
+        "mean": 336.0,
+        "missed": 0,
+        "peak": 606.8,
+        "samples": 11,
+        "unit": "MiB"
+      },
+      {
+        "profile": "sbx-deny-all",
+        "agent": "hermes-agent",
+        "mean": 405.6,
+        "missed": 0,
+        "peak": 753.7,
+        "samples": 9,
+        "unit": "MiB"
+      },
+      {
+        "profile": "docker-none",
+        "agent": "hermes-agent",
+        "mean": 270.6,
+        "missed": 0,
+        "peak": 425.8,
+        "samples": 4,
+        "unit": "MiB"
+      },
+      {
+        "profile": "docker-none",
+        "agent": "localai-docagent",
+        "mean": 43.0,
+        "missed": 0,
+        "peak": 43.0,
+        "samples": 1,
+        "unit": "MiB"
+      }
+    ],
+    "summary": {
+      "batch_id": "3802624c",
+      "planned": 5,
+      "completed": 5,
+      "stopped": false,
+      "anomaly": null,
+      "reasons": [],
+      "stopped_at": null,
+      "message": null,
+      "planted": []
+    }
+  },
+  "shared_wire": {
+    "pass": true,
+    "summary": {
+      "batch_id": "63cde28c",
+      "planned": 2,
+      "completed": 1,
+      "stopped": true,
+      "anomaly": "suspected_escape",
+      "reasons": [
+        "shared tripwire changed: tripwire-63cde28c.txt"
+      ],
+      "stopped_at": 0,
+      "message": "SUSPECTED ESCAPE: the batch is stopped. Treat this run's results as untrustworthy.\nTier 2 (VM): the disposable VM should have absorbed it. Report it to the sandbox runtime's project.\n  - shared tripwire changed: tripwire-63cde28c.txt\nKept trial folders: ~/.agent-workbench/evidence/<run id>/\nNothing was retried.",
+      "planted": [
+        {
+          "result": 9
+        }
+      ]
+    }
+  },
+  "trial_wire": {
+    "pass": true,
+    "summary": {
+      "batch_id": "5825f50f",
+      "planned": 2,
+      "completed": 1,
+      "stopped": true,
+      "anomaly": "suspected_escape",
+      "reasons": [
+        "trial tripwire changed: tripwire.txt"
+      ],
+      "stopped_at": 0,
+      "message": "SUSPECTED ESCAPE: the batch is stopped. Treat this run's results as untrustworthy.\nTier 2 (VM): the disposable VM should have absorbed it. Report it to the sandbox runtime's project.\n  - trial tripwire changed: tripwire.txt\nKept trial folders: ~/.agent-workbench/evidence/<run id>/\nNothing was retried.",
+      "planted": [
+        {
+          "result": "/var/folders/d5/crh2kq9n6w76_1p746ww1f400000gn/T/wb-trial-7rzk8z3b/tripwire/tripwire.txt"
+        }
+      ]
+    }
+  },
+  "inventory": {
+    "pass": true,
+    "summary": {
+      "batch_id": "67b782b3",
+      "planned": 2,
+      "completed": 1,
+      "stopped": true,
+      "anomaly": "integrity",
+      "reasons": [
+        "inventory: volumes appeared: wb-phase4-planted-20261127-160505"
+      ],
+      "stopped_at": 0,
+      "message": "INTEGRITY ANOMALY: the batch is stopped. Evidence is kept; the sandbox was removed.\n  - inventory: volumes appeared: wb-phase4-planted-20261127-160505\nKept trial folders: ~/.agent-workbench/evidence/<run id>/\nNothing was retried.",
+      "planted": [
+        {
+          "result": 0
+        }
+      ]
+    }
+  },
+  "token": {
+    "pass": true,
+    "summary": {
+      "batch_id": "02ede7ab",
+      "planned": 2,
+      "completed": 1,
+      "stopped": true,
+      "anomaly": "suspected_escape",
+      "reasons": [
+        "tripwire token reached the model: tripwire_shared"
+      ],
+      "stopped_at": 0,
+      "message": "SUSPECTED ESCAPE: the batch is stopped. Treat this run's results as untrustworthy.\nTier 0/1 (Docker): treat the host or Docker Desktop's VM as possibly compromised.\n  - tripwire token reached the model: tripwire_shared\nKept trial folders: ~/.agent-workbench/evidence/<run id>/\nNothing was retried.",
+      "planted": []
+    }
+  },
+  "_kept_shared_tripwires_removed": [
+    "~/.agent-workbench/tripwires/tripwire-02ede7ab.txt",
+    "~/.agent-workbench/tripwires/tripwire-5825f50f.txt",
+    "~/.agent-workbench/tripwires/tripwire-63cde28c.txt",
+    "~/.agent-workbench/tripwires/tripwire-67b782b3.txt"
+  ],
+  "_leftovers_at_end": [],
+  "_versions": {
+    "sbx": "v0.54.0",
+    "docker": "29.8.2",
+    "pinned_sbx": "v0.54.0"
+  }
+}

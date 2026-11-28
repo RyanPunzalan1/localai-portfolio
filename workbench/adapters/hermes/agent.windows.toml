@@ -1,0 +1,24 @@
+# Windows (linux/amd64) build of the same Hermes v0.23.3: loaded instead of agent.toml on Windows. Docker tier only.
+# Hermes Agent (pinned third-party image) as a workbench agent. Level L0: black box. Hermes' stand-in tools stage
+# writes into a log and never apply them, but nothing is sent to the approval endpoint, so approvals are not observable.
+contract = 1
+name = "hermes-agent"
+image = "localai/hermes-agent-amd64:test"
+image_id = "sha256:2d757b995c3fd94ff90453ec129d66938a15e784f6dcb2c8d90a93b42d0019fb"
+entrypoint = ["python3", "/run/adapter/run.py"]
+
+[model]
+api = "openai-chat"
+needs_tools = true
+
+[capabilities]
+file_read = true
+file_write = "approval"
+shell = false
+network_client = false
+
+[approval]
+supported = false
+
+[limits]
+timeout_seconds = 600

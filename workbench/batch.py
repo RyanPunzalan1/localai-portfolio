@@ -53,6 +53,8 @@ def stop_message(anomaly, reasons, tier=None) -> str:
     else:
         lines = ["INTEGRITY ANOMALY: the batch is stopped. Evidence is kept; the sandbox was removed."]
     lines += [f"  - {r}" for r in reasons[:6]]
+    if anomaly != "refused":
+        lines.append("Kept trial folders: ~/.agent-workbench/evidence/<run id>/")
     lines.append("Nothing was retried.")
     return "\n".join(lines)
 
@@ -95,5 +97,5 @@ def run_batch(cases, run_one, out_path, guard, summary_path=None, say=print) -> 
     finally:
         guard.close(keep=summary["anomaly"] in ("suspected_escape", "integrity"))
         if summary_path:
-            Path(summary_path).write_text(json.dumps(summary, indent=2), encoding="utf-8")
+            Path(summary_path).write_text(json.dumps(summary, indent=2), encoding="utf-8", newline="\n")
     return summary

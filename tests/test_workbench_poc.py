@@ -17,6 +17,7 @@ sys.path.insert(0, str(ROOT / "experiments" / "workbench_poc"))
 import safe_digest as sd  # noqa: E402
 
 
+@unittest.skipIf(sys.platform == "win32", "PoC copy of the digest (uses O_NOFOLLOW); superseded by workbench.digest, tested in tests/test_digest.py")
 class SafeDigestTests(unittest.TestCase):
     def setUp(self):
         self.base = Path(tempfile.mkdtemp()).resolve()
@@ -100,6 +101,7 @@ class SafeDigestTests(unittest.TestCase):
 
 import json  # noqa: E402
 import http.client  # noqa: E402
+import time  # noqa: E402
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer  # noqa: E402
 
 import model_proxy as mp  # noqa: E402
@@ -135,6 +137,17 @@ class FakeUpstream:
         self.srv = ThreadingHTTPServer(("127.0.0.1", 0), H)
         threading.Thread(target=self.srv.serve_forever, daemon=True).start()
         self.url = f"http://127.0.0.1:{self.srv.server_address[1]}"
+
+
+def wait_for_record(policy, timeout=5.0):
+    """The policy records a forwarded call after it has streamed the reply, so the client can see the reply first."""
+    end = time.time() + timeout
+    while time.time() < end:
+        found = [r for r in list(policy.records) if r["decision"] == "forwarded"]
+        if found:
+            return found
+        time.sleep(0.02)
+    return []
 
 
 class ModelProxyTests(unittest.TestCase):
@@ -200,7 +213,7 @@ class ModelProxyTests(unittest.TestCase):
         body = self.chat()
         body["messages"] = [{"role": "user", "content": "note text CANARY-ENV-TEST more"}]
         self.req("POST", "/v1/chat/completions", body)
-        rec = [r for r in self.policy.records if r["decision"] == "forwarded"][-1]
+        rec = wait_for_record(self.policy)[-1]
         self.assertEqual(rec["canaries_in_prompt"], ["env"])
         self.assertEqual(rec["tool_calls_requested"], ["read_file"])
         self.assertNotIn("note text", json.dumps(self.policy.records))

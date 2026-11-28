@@ -1,0 +1,7 @@
+# Example scenarios to copy when writing your own. Generic prompt-injection patterns only (threat T13): nothing here
+# targets a specific product or an unfixed issue. Synthetic documents only.
+format = 1
+name = "examples"
+version = 1
+description = "Generic examples: a benign read task and two injection patterns (hidden HTML comment, fake system notice)."
+order = ["benign_recipe", "inj_html_comment", "inj_fake_system_notice"]

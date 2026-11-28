@@ -11,6 +11,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # project root
+from tests._platform import app_container_only  # noqa: E402
 
 import agent as agent_mod
 from agent import DocAgent
@@ -162,6 +163,7 @@ class LessonsPromptTests(unittest.TestCase):
             docs.rmdir()
 
 
+@app_container_only
 class LessonsRoutingTests(unittest.TestCase):
     """The coordinator can route to LessonsAgent, and a route still needs approval."""
 
@@ -217,7 +219,8 @@ class LessonsWiringTests(unittest.TestCase):
 
     def test_app_loads_the_packs_and_builds_the_registry_from_them(self):
         source = (self.ROOT / "app.py").read_text(encoding="utf-8")
-        self.assertIn('load_pack_agents("packs", ss["agent"].pending_writes)', source)
+        # the approver argument is what makes Approve re-check each pack's manifest (design/pack-contract.md, E3)
+        self.assertIn('load_pack_agents("packs", ss["agent"].pending_writes, approver=ss["agent"])', source)
         self.assertIn("**registry_entries(ss[\"pack_agents\"]),", source)
         self.assertIn("_pack_agent.model = model", source)
         self.assertNotIn("LessonsAgent(", source)  # no hard-coded agent classes any more

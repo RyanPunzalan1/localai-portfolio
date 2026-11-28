@@ -13,6 +13,7 @@ import pandas as pd
 import streamlit as st
 
 from dashboard.theme import ATTRIBUTION, GROUPS, icon
+from dashboard.timefmt import month_day
 
 
 # ------------------------------------------------------------------ pure HTML builders
@@ -230,7 +231,7 @@ def evidence_panel(row: dict) -> None:
 
     attribution = attribution_tag_html(row.get("attribution"))
     verified = "" if row.get("verified") else status_badge_html("unverified")
-    when = row["time"].strftime("%b %-d, %H:%M:%S") if pd.notna(row.get("time")) else "time not recorded"
+    when = f'{month_day(row["time"])}, {row["time"]:%H:%M:%S}' if pd.notna(row.get("time")) else "time not recorded"
     repeat = row.get("repeat")
     repeat = f" · repeat {int(repeat)}" if pd.notna(repeat) else ""
     html(f'<div class="ev-head"><div><div class="ev-item mono">{escape(str(row["item"]))}</div>'

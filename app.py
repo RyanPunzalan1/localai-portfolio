@@ -1,14 +1,15 @@
 import json
 import os
 import streamlit as st
-import ollama
 import chromadb
 from chromadb.config import Settings
 
+import about
 import approval_view
 import brain
 import rag
-from agent import FALLBACK_MODEL, MODEL as DEFAULT_MODEL, SYSTEM_PROMPT, DocAgent, chat_options
+from agent import FALLBACK_MODEL, MODEL as DEFAULT_MODEL, SYSTEM_PROMPT, ApprovalRefused, DocAgent, chat_options, \
+    ollama_client, planned_target
 from lesson_capture import MAX_LESSONS, stage_lessons
 from lessons import all_tags, filter_lessons, list_lessons
 from pending_store import PendingStore
@@ -203,6 +204,9 @@ label[data-selected="true"] > div:first-of-type {background-color: var(--accent)
 
 .approve {border: 1px solid var(--line); background: var(--panel); border-radius: var(--radius);
           padding: .7rem .9rem; margin: .5rem 0; font-size: .88rem;}
+/* Security fix 2: what Approve will do (display only; see approval_view.target_html) */
+.target {font-size: .86rem; margin: .1rem 0 .4rem; color: var(--text);}
+.target.refused {color: #b91c1c;}
 /* Phase 2 reviewer warnings and provenance (display only; see approval_view.py) */
 .prov-warn {border: 1px solid #d97706; background: rgba(217,119,6,.13); border-radius: var(--radius);
             padding: .6rem .9rem; margin: .4rem 0 .5rem; font-size: .86rem; color: var(--text);}
@@ -317,7 +321,7 @@ if "log" not in ss:
 if "pack_agents" not in ss:
     # Every pack in packs/ becomes an agent that shares the approvals inbox with DocAgent.
     # A pack that fails its checks is reported below and left out; the others still load.
-    ss["pack_agents"], ss["pack_errors"] = load_pack_agents("packs", ss["agent"].pending_writes)
+    ss["pack_agents"], ss["pack_errors"] = load_pack_agents("packs", ss["agent"].pending_writes, approver=ss["agent"])
 if "coord" not in ss:
     ss["coord"] = brain.Coordinator(
         {
@@ -330,18 +334,21 @@ if "coord" not in ss:
         },
         ss["log"],
         # The model suggests an agent; the coordinator only accepts registered names.
-        pick=brain.model_picker(lambda prompt: ollama.chat(
+        pick=brain.model_picker(lambda prompt: ollama_client().chat(
             model=model, messages=[{"role": "user", "content": prompt}],
             options=chat_options(model))["message"]["content"],
             purposes={"DocAgent": "Lists, reads, and saves note files. Use for any request about files or notes.",
                       **{name: entry["purpose"] for name, entry in registry_entries(ss["pack_agents"]).items()}}),
     )
 
+STATUS_TIMEOUT = 5  # seconds for a quick "is Ollama up / which models" check
+
+
 @st.cache_data(ttl=15)
 def ollama_online():
     """True when Ollama answers. Cached briefly so each rerun does not call it."""
     try:
-        ollama.list()
+        ollama_client(STATUS_TIMEOUT).list()
         return True
     except Exception:
         return False
@@ -350,7 +357,7 @@ def ollama_online():
 def installed_models():
     """Chat models installed in Ollama. Embedding models are left out."""
     try:
-        names = [m.model for m in ollama.list().models]
+        names = [m.model for m in ollama_client(STATUS_TIMEOUT).list().models]
     except Exception:
         return []
     return [n for n in names if "embed" not in n and is_local_model(n)]
@@ -408,6 +415,10 @@ with st.sidebar:
             init_rag.clear()
             st.rerun()
 
+    with st.expander("About", icon=":material/info:"):
+        # Shown only. Check it against a signed tag with: python scripts/release.py verify <tag> --worktree
+        st.caption(about.about_line())
+
 agent = ss["agent"]
 agent.model = model
 agent.tools = agent._build_tools(rag_search if use_rag else None)
@@ -450,6 +461,10 @@ tab_chat, tab_approve, tab_lessons, tab_activity = st.tabs([
 ])
 
 with tab_chat:
+    # Security fix 2: decided by the inbox count, so the model's wording ("done!") cannot hide a pending write.
+    waiting = approval_view.waiting_banner(len(agent.pending_writes))
+    if waiting:
+        st.warning(waiting, icon=":material/pending_actions:")
     visible = [m for m in current_messages if m["role"] != "system"]
     if not visible:
         with st.container(key="hero"):
@@ -471,6 +486,10 @@ with tab_chat:
             st.rerun()
 
 with tab_approve:
+    # Versioned data (data_schema.py): a saved inbox the app could not use is set aside, never overwritten. Say so.
+    unreadable = approval_view.unreadable_notice(getattr(agent.pending_writes, "unreadable_files", lambda: [])())
+    if unreadable:
+        st.warning(unreadable, icon=":material/folder_off:")
     with st.expander("Add lessons from text", icon=":material/post_add:"):
         st.caption(f"Paste up to {MAX_LESSONS} lessons in the saved layout: a '# Title' line, then "
                    "Tags:, **Lesson:** and **Why:**. They wait below. Each one needs its own Approve.")
@@ -501,6 +520,10 @@ with tab_approve:
         for i, w in enumerate(list(agent.pending_writes)):
             st.markdown(f'<div class="approve">The agent wants to save <b>{escape(w["name"])}</b></div>',
                         unsafe_allow_html=True)
+            # Security fix 2: exactly what Approve will do (new file, the _newN name, append, mark done).
+            refusal = agent.pack_refusal(w)  # a change that breaks its pack's manifest is refused at Approve (E3)
+            plan = ({"action": "refused", "text": f"Approving will fail: {refusal}"} if refusal else planned_target(w))
+            st.markdown(approval_view.target_html(plan), unsafe_allow_html=True)
             # Phase 2: reviewer warnings and what the agent saw. Display only; Approve below is unchanged.
             warning_box = approval_view.warnings_html(w)
             if warning_box:
@@ -514,7 +537,13 @@ with tab_approve:
                     st.markdown(seen, unsafe_allow_html=True)
             a, b, _ = st.columns([1, 1, 4])
             if a.button("Approve", key=f"ok{i}", type="primary"):
-                result = agent.approve_write(i)
+                try:
+                    result = agent.approve_write(i)
+                except ApprovalRefused as e:
+                    ss["log"].append({"event": "blocked", "agent": w.get("agent", "DocAgent"), "target": w["name"],
+                                      "reason": "pack_permissions"})
+                    st.toast(f"Refused: {e}")
+                    st.rerun()
                 ss["log"].append({"event": "write_approved", "agent": w.get("agent", "DocAgent"),
                                   "target": w["name"],
                                   "result": result})
@@ -681,7 +710,7 @@ with tab_chat:
                     st.warning(f"Document search failed: {e}")
 
             def stream():
-                for part in ollama.chat(model=model, messages=clean, stream=True, options=chat_options(model)):
+                for part in ollama_client().chat(model=model, messages=clean, stream=True, options=chat_options(model)):
                     yield part["message"]["content"]
 
             # Collect the whole answer first so images can be stripped before rendering.

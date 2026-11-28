@@ -9,6 +9,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # project root
+from tests._platform import app_container_only  # noqa: E402
 
 import provenance as pv
 from evals.cases import CASES as EVAL_CASES
@@ -101,12 +102,14 @@ class PendingStoreUpdateTests(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
+    @app_container_only
     def test_update_adds_fields_and_they_survive_a_reload(self):
         self.store.update(0, {"provenance": {"files_read": ["ideas.md"]}, "warnings": [{"code": "x", "message": "m"}]})
         again = PendingStore(self.store.path)
         self.assertEqual(again[0]["provenance"], {"files_read": ["ideas.md"]})
         self.assertEqual(again[0]["content"], "hi")
 
+    @app_container_only
     def test_update_cannot_change_what_gets_written(self):
         for field in ("name", "content", "mode"):
             with self.subTest(field=field), self.assertRaises(ValueError):
@@ -221,6 +224,7 @@ class AgentProvenanceTests(unittest.TestCase):
         self.assertEqual(ag.approve_write(0), "Saved d.md")  # only an explicit approval writes
         self.assertEqual((self.docs / "d.md").read_text(encoding="utf-8"), "exact text")
 
+    @app_container_only
     def test_provenance_is_saved_in_the_persistent_inbox(self):
         store = PendingStore(self.tmp / "pending.json")
         self.run_agent("Summarize ideas.md", [

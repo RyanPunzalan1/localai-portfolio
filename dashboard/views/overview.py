@@ -1,17 +1,21 @@
-"""Overview page, laid out like the reference dashboard: KPI row, top issues and assets, outcome breakdown,
-trend charts, then the run's attack table and evidence. Every number is computed from the result files."""
+"""Overview page: KPI row, top issues and assets, outcome breakdown, security domain results, trend charts, the
+run's attack table with the evidence viewer, readiness and reports, then run history. Every number is computed from
+the result files."""
 
 from functools import partial
 from html import escape
 
 import streamlit as st
 
-from dashboard import charts
-from dashboard.components import (activity_frame, card, card_title, empty_state, evidence_panel,
-                                  filter_bar, group_label, html, kpi_row, note, page_header_html, result_styler,
-                                  section_title)
+from dashboard import charts, data
+from dashboard.components import (activity_frame, card, card_title, empty_state, filter_bar, group_label, html,
+                                  kpi_row, note, page_header_html, result_styler, section_title)
 from dashboard.data import outcome_counts, row_dict, run_summary
+from dashboard.evidence import evidence_viewer
 from dashboard.store import snapshot
+from dashboard.theme import icon
+from dashboard.timefmt import month_day
+from dashboard.views.readiness import readiness_summary_html
 
 RUN_HINT = ".venv/bin/python experiments/local_agent/scripted_control.py --repeats 2"
 DOT = {"Succeeded": "red", "Unattributed": "orange", "No attempt": "blue"}  # matches charts.OUTCOME_REF
@@ -22,7 +26,7 @@ def _period(trials) -> str | None:
     if times.empty:
         return None
     lo, hi = times.min(), times.max()
-    return lo.strftime("%b %-d, %Y") if lo.date() == hi.date() else f"{lo:%b %-d} – {hi:%b %-d, %Y}"
+    return f"{month_day(lo)}, {lo:%Y}" if lo.date() == hi.date() else f"{month_day(lo)} – {month_day(hi)}, {hi:%Y}"
 
 
 def _n(count: int, noun: str) -> str:
@@ -98,9 +102,12 @@ def _breakdown(view) -> None:
     parts = pd_frame({"outcome": ["Succeeded", "Unattributed", "Blocked", "No attempt"],
                       "n": [int(counts.get("succeeded", 0)), int(counts.get("unattributed", 0)),
                             int(counts.get("blocked", 0)), int(counts.get("no_attempt", 0))]})
-    with st.container(key="ring-wrap"):
-        html(f'<div class="ring-total"><span>Total</span><b>{total}</b></div>')
-        st.altair_chart(charts.ring(parts, "outcome", "n", charts.OUTCOME_REF), width="stretch")
+    st.altair_chart(charts.ring(parts, "outcome", "n", charts.OUTCOME_REF, legend="none", total=str(total)),
+                    width="stretch")
+    shown = parts[parts["n"] > 0]
+    html('<div class="ring-legend">' + "".join(
+        f'<span><i style="--c: {charts.OUTCOME_REF[o]}"></i>{escape(o)} <b>{n}</b></span>'
+        for o, n in zip(shown["outcome"], shown["n"])) + "</div>")
 
 
 def pd_frame(data: dict):
@@ -208,30 +215,93 @@ def render():
         _breakdown(view)
 
     st.write("")
+    with card("domains"):
+        card_title("Security domain results")
+        html(domains_html(view))
+        note("Each operation belongs to one domain, from words in its name. Red: an attack succeeded or a legitimate "
+             "task was blocked. Green: held. Grey: no attempt, not reached or inconclusive.")
+
+    st.write("")
     _trends(view)
 
     st.write("")
     picked = _outcome_section(view)
 
     st.write("")
-    left, right = st.columns([3, 2], gap="medium")
-    with left, card("activity"):
+    with card("activity"):
         row = _activity_section(view, picked)
-    with right, card("evidence"):
-        section_title("Trial evidence", "file")
+    st.write("")
+    with card("evidence"):
+        card_title("Evidence viewer")
         if row is None:
             st.caption("Select a row in Recent activity to see its execution timeline and the observer's record.")
         else:
-            evidence_panel(row)
+            evidence_viewer(row)
             if st.button("Open in Experiments", icon=":material/science:", key="open_in_experiments"):
-                from dashboard.nav import page
                 # Experiments' own widgets are not on this page, so their state can be set here.
                 st.session_state.update(x_run=row["run_id"], x_config=[row["config"]], x_query=row["item"],
                                         x_kind=[], x_result=[])
                 st.switch_page(page("experiments"))
 
     st.write("")
+    ready_col, reports_col = st.columns(2, gap="medium")
+    with ready_col, card("readiness"):
+        card_title("Security readiness", None, page("readiness"))
+        html(readiness_summary_html())
+        note("Tested versus untested capabilities, copied from the workbench's own documents.")
+    with reports_col, card("reports"):
+        card_title("Reports", None, page("reports"))
+        _latest_reports()
+
+    st.write("")
     _run_history(trials)
+
+
+def _latest_reports(limit: int = 3) -> None:
+    """The newest workbench reports, each with its HTML report as a download."""
+    reps = data.find_reports()
+    if not reps:
+        st.caption("No reports found.")
+    for i, rep in enumerate(reps[:limit]):
+        html_file = next((p for p in rep["files"] if p.suffix == ".html"), None)
+        name_col, button_col = st.columns([3, 2], vertical_alignment="center")
+        name_col.markdown(f"`{rep['folder'].name}`")
+        if html_file is not None:
+            button_col.download_button("Report (HTML)", html_file.read_bytes(), f"{rep['folder'].name}-report.html",
+                                       "text/html", key=f"ov_dl_{i}", icon=":material/download:", width="stretch")
+
+
+# Domain -> icon on the domain row.
+DOMAIN_ICONS = {"exfiltration": "database", "injection": "inject", "write": "pencil", "file_access": "folder",
+                "model_server": "server", "command": "terminal", "network": "globe", "benign": "check",
+                "control": "shield_check", "other": "dot"}
+# Display group -> (result name, theme token), for the small results under each domain.
+RESULT_TOKENS = [("succeeded", "Succeeded", "bad"), ("stopped_at_approval", "Stopped at approval", "warn"),
+                 ("unattributed", "Unattributed", "serious"), ("blocked", "Blocked", "good"),
+                 ("no_attempt", "No attempt", "unk"), ("not_reached", "Not reached", "unk"),
+                 ("inconclusive", "Inconclusive", "unk"), ("benign_completed", "Completed", "good"),
+                 ("false_positive", "False positive", "bad"), ("control_passed", "Passed", "good"),
+                 ("control_failed", "Failed", "bad"),
+                 ("other", "Other (a benign task that failed without a control)", "unk")]
+
+
+def domains_html(view) -> str:
+    """One cell per security domain: an icon coloured by its worst result, then each result with its count."""
+    dr = data.domain_results(view)
+    cells = []
+    for _, r in dr.iterrows():
+        results = [(name, int(r[grp]), token) for grp, name, token in RESULT_TOKENS if r.get(grp, 0)]
+        lead = "bad" if r.get("succeeded", 0) or r.get("false_positive", 0) or r.get("control_failed", 0) else (
+            "good" if results else "unk")
+        res = "".join(f'<span style="--c: var(--{token})" title="{escape(name)}">'
+                      f'{icon("alert" if token == "bad" else "check" if token == "good" else "dot", token, 12)}{n}</span>'
+                      for name, n, token in results)
+        if r["unverified"]:
+            res += f'<span style="--c: var(--unk)" title="Unverified">{icon("eye_off", "unk", 12)}{int(r["unverified"])}</span>'
+        cells.append(f'<div class="domain" title="{escape(r["label"])}: {int(r["trials"])} trials">'
+                     f'<span>{icon(DOMAIN_ICONS.get(r["domain"], "dot"), lead, 26)}</span>'
+                     f'<span class="domain-name">{escape(r["label"])}</span><span class="domain-res">{res}</span></div>')
+    return f'<div class="domains">{"".join(cells)}</div>'
 
 
 

@@ -8,6 +8,7 @@ from unittest.mock import patch
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # project root
+from tests._platform import app_container_only, needs_unix_modes  # noqa: E402
 
 import agent as agent_mod
 from agent import DocAgent
@@ -21,6 +22,7 @@ class PendingStoreTests(unittest.TestCase):
         self.path = Path(self.tmp.name) / "pending_writes.json"
         self.addCleanup(self.tmp.cleanup)
 
+    @app_container_only
     def test_proposal_survives_new_store_instance(self):
         # A new instance stands in for a page reload: nothing is kept in memory.
         PendingStore(self.path).append({"name": "tasks.md", "content": "- [ ] a\n", "mode": "append"})
@@ -28,6 +30,8 @@ class PendingStoreTests(unittest.TestCase):
         self.assertEqual(len(reloaded), 1)
         self.assertEqual(reloaded[0]["content"], "- [ ] a\n")
 
+    @app_container_only
+    @needs_unix_modes
     def test_file_is_owner_only(self):
         store = PendingStore(self.path)
         store.append({"name": "a.md", "content": "private"})
@@ -35,6 +39,7 @@ class PendingStoreTests(unittest.TestCase):
         store.append({"name": "b.md", "content": "more"})  # a rewrite keeps it owner-only
         self.assertEqual(self.path.stat().st_mode & 0o777, 0o600)
 
+    @app_container_only
     def test_pop_removes_item_and_saves(self):
         store = PendingStore(self.path)
         store.append({"name": "a.md", "content": "1"})
@@ -71,6 +76,7 @@ class ApprovalSurvivesReloadTests(unittest.TestCase):
         self.addCleanup(patcher.stop)
         self.pending_file = Path(self.tmp.name, "logs", "pending_writes.json")
 
+    @app_container_only
     def test_task_proposed_before_reload_is_approved_after_reload(self):
         # "Session 1": TaskAgent proposes a task.
         session1 = TaskAgent(pending_writes=PendingStore(self.pending_file))
@@ -85,6 +91,7 @@ class ApprovalSurvivesReloadTests(unittest.TestCase):
         self.assertEqual((self.docs / "tasks.md").read_text(encoding="utf-8"), "- [ ] buy milk\n")
         self.assertEqual(len(PendingStore(self.pending_file)), 0)
 
+    @app_container_only
     def test_rejected_proposal_is_gone_after_reload(self):
         TaskAgent(pending_writes=PendingStore(self.pending_file)).tools["add_task"]("call mom")
         DocAgent(pending_writes=PendingStore(self.pending_file)).reject_write(0)

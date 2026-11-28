@@ -27,6 +27,10 @@ class ManifestError(ValueError):
     """The manifest is not valid. The message says what to fix."""
 
 
+class PackError(ValueError):
+    """The pack's code does not match its manifest (for example it offers a tool the manifest does not declare)."""
+
+
 @dataclass
 class Manifest:
     name: str
@@ -153,6 +157,16 @@ def parse_manifest(text: str, pack_dir: Path = None) -> Manifest:
                     tools=[dict(t) for t in tools], read=read, write=write,
                     write_modes=set(modes), model=model, agent=agent,
                     folder=Path(pack_dir) if pack_dir is not None else None, handoffs=handoffs)
+
+
+def check_runnable(manifest: Manifest) -> None:
+    """Refuse a pack this core cannot run yet (design/pack-contract.md, E4).
+
+    Every pack runs inside the core's model loop, so `permissions.model = false` (tools only, no model) has no meaning
+    yet. It used to be read and ignored; now it is refused, so the flag can never promise something that isn't true."""
+    if not manifest.model:
+        raise PackError("permissions.model is false or missing: packs without the model are not supported yet. "
+                        "Every pack runs in the core's model loop; set model = true.")
 
 
 def load_packs(root: Path):

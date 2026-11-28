@@ -1,0 +1,5 @@
+{
+  "title": "Workbench run: pack core",
+  "results": ["results.jsonl"],
+  "note": "Phase 6 reference run, 2026-11-25: core pack, localai and hermes on docker-none, hermes on sbx-deny-all, 1 repeat."
+}

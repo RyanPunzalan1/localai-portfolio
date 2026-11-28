@@ -9,6 +9,7 @@ import base64
 import itertools
 import json
 import queue
+import socketserver
 import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -80,9 +81,17 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
 
+class Server(ThreadingHTTPServer):
+    def server_bind(self):
+        # HTTPServer.server_bind looks up a host name with socket.getfqdn, a reverse DNS query. It hung for over 30 s
+        # in a fresh process on GitHub's macOS runner (CI, 2026-11-28). The shim never uses the name, so skip it.
+        socketserver.TCPServer.server_bind(self)
+        self.server_name, self.server_port = self.server_address[:2]
+
+
 def main():
     port = int(sys.argv[sys.argv.index("--port") + 1]) if "--port" in sys.argv else 13131
-    srv = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    srv = Server(("127.0.0.1", port), Handler)
     srv.daemon_threads = True
     threading.Thread(target=_reader, daemon=True).start()
     _send({"id": 0, "type": "ready", "port": srv.server_address[1]})

@@ -17,6 +17,8 @@ import hashlib
 import os
 import stat
 
+from workbench import hostos
+
 MAX_ENTRIES = 5000
 MAX_FILE_BYTES = 8 * 1024 * 1024   # bytes hashed per file; longer files are marked "truncated"
 CHUNK = 64 * 1024
@@ -39,7 +41,7 @@ def _kind(mode):
 
 
 def _hash_file(path, size):
-    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | getattr(os, "O_NONBLOCK", 0))
+    fd = hostos.current().open_regular_nofollow(path)
     try:
         st = os.fstat(fd)
         if not stat.S_ISREG(st.st_mode):  # swapped for something else between lstat and open
@@ -64,6 +66,9 @@ def _hash_file(path, size):
 def digest(root) -> dict:
     """{relative path: entry} for everything under root, without following links. root itself must be a directory."""
     root = os.fspath(root)
+    if os.name == "nt":  # no O_NOFOLLOW on Windows: its own backend, same output format
+        from workbench import digest_windows
+        return digest_windows.digest(root, MAX_ENTRIES, (MAX_FILE_BYTES, CHUNK), DigestLimit)
     st = os.lstat(root)
     if not stat.S_ISDIR(st.st_mode):
         raise ValueError("digest root must be a real directory, not a link or file")

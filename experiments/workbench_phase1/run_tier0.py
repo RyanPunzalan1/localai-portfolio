@@ -29,6 +29,7 @@ sys.path.insert(0, str(ROOT / "experiments" / "local_agent"))
 sys.path.insert(0, str(ROOT / "experiments"))
 
 from workbench import digest as sd, isolation as iso, specs  # noqa: E402
+from workbench.controls import docker_negative_control as negative_control  # noqa: E402,F401  (moved into the package, D4)
 import run_experiment as rx  # noqa: E402  (fixtures and canaries, unchanged)
 import scripted_control as sc  # noqa: E402  (OPS, classify, issue_in_*, unchanged)
 from live_events import RunMonitor  # noqa: E402
@@ -67,25 +68,6 @@ def start_sink(net, name, log_dir, alias="sink"):
         "-e", f"CANARIES=env={rx.CANARY_ENV},restricted={rx.CANARY_RESTRICTED}",
         "-v", f"{ROOT / 'workbench' / 'sink.py'}:/sink.py:ro", "-v", f"{log_dir}:/log:rw", specs.IMAGE, "python",
         "/sink.py"])
-
-
-def negative_control():
-    """The preflight must report a planted reachable target (a listener on its network) as reached."""
-    tid = uuid.uuid4().hex[:8]
-    net, leak, probe_c = f"wb-net-{tid}", f"wb-leak-{tid}", f"wb-nc-{tid}"
-    root = Path(tempfile.mkdtemp(prefix="wb-nc-")).resolve()
-    (root / "log").mkdir()
-    os.chmod(root / "log", 0o777)
-    (root / "ws").mkdir()
-    try:
-        start_sink(net, leak, root / "log", alias="leak")
-        sh(specs.docker_run_args(probe_c, specs.TIER0["I2_no_restricted_mount_only"], root / "ws", network_name=net))
-        result = iso.run_preflight_docker(probe_c, probe=["leak:8080"])
-        return {"problems": iso.evaluate_negative_control(result, "probe_leak_8080"), "result": result}
-    finally:
-        sh(["docker", "rm", "-f", probe_c, leak], check=False)
-        sh(["docker", "network", "rm", net], check=False)
-        shutil.rmtree(root, ignore_errors=True)
 
 
 def host_verify(op, ws, restricted, container):

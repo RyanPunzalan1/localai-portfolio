@@ -3,7 +3,8 @@
 Read-only. Recounts every per-profile number straight from the raw schema-1 records, with its own category mapping
 written out below (not imported from the dashboard), and compares it with dashboard.data.outcome_counts. It runs over
 a temporary folder holding:
-  - the real Phase 2 records (experiments/workbench_phase2/results/channel-*.jsonl),
+  - the real Phase 2 records (experiments/workbench_phase2/results/channel-*.jsonl), and since the macOS RC also the
+    Phase 3 to 6 records (including Phase 4's planted integrity and suspected-escape trials),
   - the schema fixture (tests/fixtures/workbench_record_v1.jsonl: every attack category used so far, benign, inconclusive),
   - one extra record that reports an isolation failure, which must be counted as unverified and nowhere else.
 Usage: python3 experiments/checks/verify_workbench_numbers.py   (exit code 1 if anything disagrees)
@@ -27,15 +28,23 @@ ATTACK_COLUMN = {"unauthorized_action_succeeded": "succeeded", "blocked": "block
                  "inconclusive": "inconclusive", "not_applicable": "other"}
 ATTEMPTED = {"unauthorized_action_succeeded", "blocked", "attempt_unattributed", "stopped_at_approval"}
 BENIGN_COLUMN = {"completed": "benign_completed", "false_positive": "false_positive", "failed_not_control": "other",
-                 "not_applicable": "other"}
+                 "not_applicable": "other", "inconclusive": "benign_inconclusive"}
 CONTROL_COLUMN = {"observer_control_passed": "control_passed", "permitted_action_passed": "control_passed",
-                  "observer_control_failed": "control_failed", "permitted_action_failed": "control_failed"}
+                  "observer_control_failed": "control_failed", "permitted_action_failed": "control_failed",
+                  "inconclusive": "control_inconclusive"}
 
 
 def gather(tmp: Path):
     files = sorted((ROOT / "experiments" / "workbench_phase2" / "results").glob("channel-*.jsonl"))
-    for f in files:
-        shutil.copy(f, tmp / f.name)
+    # macOS RC: every later schema-1 results file too, including Phase 4's planted integrity and suspected-escape trials
+    # (the hostile copies made by the Phase 5 gate are left out: their agent names are rewritten on purpose).
+    ex = ROOT / "experiments"
+    files += sorted((ex / "workbench_phase3" / "results").glob("phase3-*.jsonl"))
+    files += sorted((ex / "workbench_phase4" / "results").glob("*/*.jsonl"))
+    files += sorted((ex / "workbench_phase5" / "results").glob("*/batch.jsonl"))
+    files += sorted((ex / "workbench_phase6").glob("**/results.jsonl"))
+    for i, f in enumerate(files):
+        shutil.copy(f, tmp / f"{i:03d}-{f.name}")
     shutil.copy(ROOT / "tests" / "fixtures" / "workbench_record_v1.jsonl", tmp / "fixture.jsonl")
     bad = json.loads((tmp / "fixture.jsonl").read_text().splitlines()[0])
     bad["trial_id"], bad["profile"]["name"] = "unverified-1", "sbx-deny-all"
@@ -59,9 +68,12 @@ def raw_counts(paths):
             per[cfg][f"{kind}_trials"] += 1
             if unverified(rec):
                 per[cfg]["unverified"] += 1
+                per[cfg][f"{kind}_unverified"] += 1
                 continue
             column = {"attack": ATTACK_COLUMN, "benign": BENIGN_COLUMN, "control": CONTROL_COLUMN}[kind].get(cat)
             per[cfg][column or "unknown"] += 1
+            if column == "other":
+                per[cfg][f"{kind}_other"] += 1
             if kind == "attack" and cat in ATTEMPTED:
                 per[cfg]["attempted"] += 1
     return per
@@ -86,13 +98,14 @@ def main():
             if not ok:
                 problems.append(label)
 
-        print(f"files: {len(paths)} ({real} real Phase 2 file(s), fixture, one unverified record)")
+        print(f"files: {len(paths)} ({real} real results file(s), fixture, one unverified record)")
         check("workbench files recognised", len(paths), len(files))
         check("unreadable records reported", 0, len(report.bad_lines))
         check("total records", sum(sum(v for k, v in c.items() if k.endswith("_trials")) for c in raw.values()), len(trials))
         columns = ["attack_trials", "attempted", "succeeded", "blocked", "unattributed", "no_attempt",
                    "stopped_at_approval", "not_reached", "inconclusive", "unverified", "benign_trials",
-                   "benign_completed", "false_positive", "control_trials", "control_passed", "control_failed", "other"]
+                   "benign_completed", "false_positive", "control_trials", "control_passed", "control_failed", "other",
+                   "benign_inconclusive", "control_inconclusive"]
         for _, row in dash.iterrows():
             cfg = row["config"]
             print(f"\nprofile {cfg}")
@@ -102,6 +115,14 @@ def main():
                                                "stopped_at_approval", "not_reached", "inconclusive"))
             print(f"  note: attack groups sum to {groups} of {int(row['attack_trials'])} attack trials "
                   "(the rest are unverified or other)")
+            for kind, cols_ in (("attack", ("succeeded", "blocked", "unattributed", "no_attempt", "stopped_at_approval",
+                                            "not_reached", "inconclusive")),
+                                ("benign", ("benign_completed", "false_positive", "benign_inconclusive")),
+                                ("control", ("control_passed", "control_failed", "control_inconclusive"))):
+                # every verified trial of a kind must be in exactly one group (other is shared across kinds)
+                verified = raw[cfg][f"{kind}_trials"] - raw[cfg][f"{kind}_unverified"]
+                shown = sum(int(row[c]) for c in cols_) + raw[cfg][f"{kind}_other"]
+                check(f"{kind} groups add up", verified, shown)
         check("profiles", sorted(raw), sorted(dash["config"]))
         check("unknown categories in raw data", 0, sum(c["unknown"] for c in raw.values()))
         print(f"\n{'ALL AGREE' if not problems else 'DISAGREEMENTS: ' + ', '.join(problems)}")

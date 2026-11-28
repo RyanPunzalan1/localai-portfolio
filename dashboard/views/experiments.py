@@ -7,12 +7,13 @@ from dashboard.components import (card, chip_html, config_panel_html, default_ru
                                   group_label, html, page_header, result_styler, section_title, trial_frame, card_title)
 from dashboard.data import row_dict, run_summary
 from dashboard.store import snapshot
+from dashboard.timefmt import month_day
 
 KINDS = ["attack", "control", "benign"]
 
 
 def _run_label(r) -> str:
-    started = r["started"].strftime("%b %-d %H:%M") if pd.notna(r["started"]) else "no time"
+    started = f'{month_day(r["started"])} {r["started"]:%H:%M}' if pd.notna(r["started"]) else "no time"
     return (f'{r["run_id"]} · {r["suite"].replace("_", " ")} · {started} · {r["trials"]} trials'
             + (" · superseded" if r["superseded"] else ""))
 

@@ -11,6 +11,7 @@ Profiles
     sbx-deny-all  Tier 2: a per-trial VM; sandbox-scoped deny for every globally allowed host; no allow rule.
 """
 
+import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -24,10 +25,20 @@ SBX_VERSION = "v0.54.0"
 # browser.enabled lets a sandbox open any URL in the host browser (data could leave past deny-all through the URL);
 # ssh.agentForwardingEnabled lets a sandbox sign with the host's SSH keys.
 SBX_REQUIRED_SETTINGS = {"browser.enabled": "false", "ssh.agentForwardingEnabled": "false"}
+# The sbx kit the VM tier creates from, pinned by digest (2026-11-25). Plain "shell" resolves docker.io/sbx/shell:latest
+# from the network on every create, so a new kit could change the sandbox without notice. Kits can declare credentials,
+# network policies, environment variables and start-up commands; this one declares none (sbx kit inspect).
+SBX_KIT = "docker.io/sbx/shell@sha256:a43a179b1c6b5100b59db6edc15b4a348f71e7d957f8d6f35368c3750525c9c6"
+# Variables sbx puts in every sandbox that the agent's own process does not need. They are removed from the agent's
+# environment with `env -u`. This is tidy-up, NOT a boundary: the sandbox's PID 1 runs as the same user and its
+# environment (/proc/1/environ) still holds them (probed 2026-11-25).
+SBX_AGENT_UNSET = ("GH_TOKEN", "MCP_GATEWAY_URL", "MCP_SENTINEL_TOKEN")
 # Flags never allowed in a trial container (matched as whole flags, with or without "=value").
 FORBIDDEN_FLAGS = ("--privileged", "--pid", "--ipc", "--uts", "--userns", "--cgroupns", "--device", "--cap-add",
                    "--volumes-from", "--mount", "--gpus", "--runtime")
-FORBIDDEN_VALUES = ("docker.sock", "seccomp=unconfined", "apparmor=unconfined", "label=disable")
+# The Docker socket (Linux and macOS) and the Windows named pipe, in any spelling Docker accepts.
+DOCKER_ENDPOINT_MARKERS = ("docker.sock", "docker_engine", "docker_cli", "//./pipe/", "\\.\\pipe\\", "/pipe/docker")
+FORBIDDEN_VALUES = (*DOCKER_ENDPOINT_MARKERS, "seccomp=unconfined", "apparmor=unconfined", "label=disable")
 
 
 @dataclass(frozen=True)
@@ -59,15 +70,64 @@ class SpecError(ValueError):
     """A spec would widen access beyond the profile. The run must not start."""
 
 
+# Folders under the user's home that no sandbox may see, however the request is phrased (credentials, tool config, the
+# workbench's own evidence and tripwires). A mount source may not be one of these, be inside one, or contain one.
+PROTECTED_HOME_FOLDERS = (".hermes", ".ssh", ".aws", ".azure", ".kube", ".gnupg", ".gcloud", ".config", ".docker",
+                          ".agent-workbench", "AppData/Roaming")
+FILE_ATTRIBUTE_REPARSE_POINT = 0x400
+
+
+def _norm(p) -> str:
+    return os.path.normcase(os.path.normpath(str(p)))
+
+
+def _inside(child, parent) -> bool:
+    """child is parent or lies under it (compared as normalised text, so case on Windows does not matter)."""
+    c, q = _norm(child), _norm(parent)
+    return c == q or c.startswith(q.rstrip("\\/") + os.sep)
+
+
+def _is_link(p: Path) -> bool:
+    """A symbolic link, a Windows junction, or any other reparse point (is_symlink alone misses junctions)."""
+    if p.is_symlink() or (hasattr(p, "is_junction") and p.is_junction()):
+        return True
+    try:
+        return bool(getattr(os.lstat(p), "st_file_attributes", 0) & FILE_ATTRIBUTE_REPARSE_POINT)
+    except OSError:
+        return False
+
+
+def mount_source_problem(p, home=None, cwd=None):
+    """Why `p` may not be mounted into a sandbox, or None. Pure apart from reading the file system."""
+    p = Path(p)
+    home = Path(home) if home is not None else Path.home()
+    cwd = Path(cwd) if cwd is not None else Path.cwd()
+    drive, tail = os.path.splitdrive(str(p))
+    if ":" in tail:
+        return f"mount source has a character that could add docker options: {p}"
+    if not p.is_absolute() or _is_link(p) or not p.is_dir():
+        return f"mount source must be an existing real directory: {p}"
+    real, home_real = p.resolve(), home.resolve()
+    if _norm(real) == _norm(real.anchor) or os.path.splitdrive(str(real))[1] in ("", "\\", "/"):
+        return f"refusing to mount a drive, share or filesystem root: {p}"
+    if _inside(home_real, real):
+        return f"refusing to mount the home folder or a folder above it: {p}"
+    if _norm(real) == _norm(cwd.resolve()):
+        return f"refusing to mount the working folder: {p}"
+    for name in PROTECTED_HOME_FOLDERS:
+        protected = home_real.joinpath(*name.split("/"))
+        if _inside(real, protected) or _inside(protected, real):
+            return f"refusing to mount a protected folder ({name}): {p}"
+    return None
+
+
 def _check_paths(*paths):
     for p in paths:
         if p is None:
             continue
-        p = Path(p)
-        if not p.is_absolute() or p.is_symlink() or not p.is_dir():
-            raise SpecError(f"mount source must be an existing real directory: {p}")
-        if str(p.resolve()) in ("/", str(Path.home().resolve())) or p.resolve() == Path.cwd().resolve():
-            raise SpecError(f"refusing to mount a broad host folder: {p}")
+        problem = mount_source_problem(p)
+        if problem:
+            raise SpecError(problem)
 
 
 # A local image: repo[:tag][@sha256:...]. No registry host with a port or scheme, no spaces; never pulled.
@@ -155,9 +215,17 @@ def sbx_create_args(name, deny_list: str, workspace=None, primary=None):
         raise SpecError("sbx sandboxes must be named wb-*")
     if not deny_list or "," not in deny_list:
         raise SpecError("the deny list is empty; refusing to create a sandbox under the global allow list")
-    args = ["sbx", "create", "shell", "--name", name, "-t", SBX_TEMPLATE, "--pull", "never", "-m", "2g",
+    args = ["sbx", "create", SBX_KIT, "--name", name, "-t", SBX_TEMPLATE, "--pull", "never", "-m", "2g",
             "--deny-network", deny_list, "--static-mcp", "none", "--no-progress", "--no-input"]
     if workspace is not None:
         _check_paths(primary, workspace)
         args += [str(primary), f"{workspace}:/workspace"]
     return args
+
+
+def tier_label(tier, system, own_code) -> str | None:
+    """What the owner accepted when a trial runs in the Docker tier on Windows. None elsewhere, so macOS records are
+    unchanged. Docker Desktop's WSL2 VM shares one Linux kernel with the user's WSL distros: that is weaker than the VM tier."""
+    if tier != 1 or system != "Windows":
+        return None
+    return f"Docker tier, shared WSL2 kernel, {'own code' if own_code else 'third-party code'}, owner-accepted"

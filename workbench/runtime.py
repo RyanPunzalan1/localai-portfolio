@@ -27,8 +27,17 @@ class RuntimeError_(RuntimeError):
     """A sandbox operation failed."""
 
 
+def _text(b) -> str:
+    """Bytes from a sandbox command as text: UTF-8, with every line end read as LF (what text mode did on macOS)."""
+    return (b or b"").decode("utf-8", "replace").replace("\r\n", "\n").replace("\r", "\n")
+
+
 def sh(args, timeout=300, input=None):
-    return subprocess.run(args, capture_output=True, text=True, timeout=timeout, input=input)
+    """Run a host command. Text goes in and out as UTF-8 on every platform. Windows text mode would use the console
+    code page and write CRLF on input, so the sandbox could see different bytes than on macOS."""
+    r = subprocess.run(args, capture_output=True, timeout=timeout,
+                       input=None if input is None else input.encode("utf-8"))
+    return subprocess.CompletedProcess(r.args, r.returncode, _text(r.stdout), _text(r.stderr))
 
 
 def _exec_args(runtime, name, argv, env=None, cwd=None, interactive=False, user=None):

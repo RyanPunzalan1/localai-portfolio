@@ -1,0 +1,12 @@
+{
+  "batch_id": "db11ffcc",
+  "planned": 1,
+  "completed": 0,
+  "stopped": true,
+  "anomaly": "refused",
+  "reasons": [
+    "sbx version v0.54.0 is not the validated v0.0.0; refusing the VM tier"
+  ],
+  "stopped_at": 0,
+  "message": "REFUSED: the batch did not start this trial.\n  - sbx version v0.54.0 is not the validated v0.0.0; refusing the VM tier\nNothing was retried."
+}

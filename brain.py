@@ -12,6 +12,9 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+import data_schema
+from safety import require_posix_files
+
 
 class RouteError(Exception):
     """The model picked an agent that is not in the registry."""
@@ -67,15 +70,19 @@ def log_args(args) -> dict:
 
 
 class ActivityLog:
-    """Append-only JSON lines file. One object per event, with a timestamp.
+    """Append-only JSON lines file. One object per event, with a timestamp and a version ("v").
 
-    The file is created readable by the owner only, and rotated once past MAX_LOG_BYTES."""
+    The file is created readable by the owner only, and rotated once past MAX_LOG_BYTES. It is history, so it is never
+    rewritten or migrated: a line without "v" is version 0, readers ignore fields they don't know, and a change in
+    what a field means gets a new event name (data_schema.py, design/versioned-data-and-releases.md)."""
 
     def __init__(self, path):
         self.path = Path(path)
 
     def append(self, event: dict) -> dict:
-        entry = {"time": datetime.now().isoformat(timespec="seconds"), **event}
+        require_posix_files()
+        entry = {"time": datetime.now().isoformat(timespec="seconds"), "v": data_schema.LOG_VERSION, **event}
+        entry["v"] = data_schema.LOG_VERSION  # an event can't claim another version
         self.path.parent.mkdir(parents=True, exist_ok=True)
         if self.path.exists() and self.path.stat().st_size > MAX_LOG_BYTES:
             self.path.replace(self.path.with_name(self.path.name + ".1"))
@@ -96,9 +103,11 @@ class ActivityLog:
             if not line.strip():
                 continue
             try:
-                entries.append(json.loads(line))
+                entry = json.loads(line)
             except ValueError:
                 continue  # one damaged line must not break the Activity tab or the blocked count
+            if isinstance(entry, dict):  # a line that is valid JSON but not an object is skipped the same way
+                entries.append(entry)
         return entries
 
     def recent(self, event=None, limit=50) -> list:

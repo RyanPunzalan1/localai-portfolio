@@ -14,7 +14,7 @@ PALETTES = {
         "bg": "#070707", "panel": "#0a0a0a", "raised": "#1a1a1b", "line": "#2a2a2b",
         "text": "#fafafa", "muted": "#8a8a8e", "accent": "#fafafa", "accent-ink": "#0a0a0a",
         # status (fixed steps, all >= 3:1 on the dark panel)
-        "good": "#22c55e", "bad": "#e5534b", "warn": "#e9b730", "serious": "#ee7d33", "unk": "#8e8ea6",
+        "good": "#15803d", "bad": "#e5534b", "warn": "#e9b730", "serious": "#ee7d33", "unk": "#8e8ea6",
         "grid": "#1c1c1d",
     },
     "light": {
@@ -36,6 +36,9 @@ GROUPS = {
     "false_positive": ("False positive", "block", "warn"),
     "control_passed": ("Control passed", "check", "good"),
     "control_failed": ("Control failed", "alert", "serious"),
+    "stopped_at_approval": ("Stopped at approval", "block", "warn"),
+    "not_reached": ("Not reached", "minus", "unk"),
+    "inconclusive": ("Inconclusive", "help", "unk"),
     "other": ("Other", "dot", "unk"),
     "unverified": ("Unverified", "eye_off", "unk"),
 }
@@ -62,6 +65,12 @@ _ICON_PATHS = {
     "database": '<ellipse cx="12" cy="5.5" rx="7" ry="2.5"/><path d="M5 5.5v13c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5v-13M5 12c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5"/>',
     "lock": '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
     "calendar": '<rect x="4" y="5" width="16" height="16" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/>',
+    "inject": '<path d="M4 6h16M4 12h10M4 18h7"/><path d="m17 15 4 4m0-4-4 4"/>',
+    "folder": '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+    "pencil": '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13.5 6.5 4 4"/>',
+    "terminal": '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3M13 15h4"/>',
+    "globe": '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>',
+    "server": '<rect x="4" y="4" width="16" height="7" rx="1.5"/><rect x="4" y="13" width="16" height="7" rx="1.5"/><path d="M8 7.5h.01M8 16.5h.01"/>',
     "chevron_updown": '<path d="m7 9 5-5 5 5M7 15l5 5 5-5"/>',
     "flask":'<path d="M9 3h6M10 3v6L4.8 18.2A2 2 0 0 0 6.5 21h11a2 2 0 0 0 1.7-2.8L14 9V3"/><path d="M7.5 15h9"/>',
 }
@@ -200,7 +209,8 @@ section[data-testid="stSidebar"] [data-testid="stPageLink"] a[aria-current="page
 
 /* Charts: theme-dependent details come from the page tokens (see dashboard.charts) */
 .outcome_segments_marks path {stroke: var(--panel) !important;}
-.outcome_labels_marks text {fill: var(--text) !important;}
+.outcome_labels_marks text, .ring_total_marks text {fill: var(--text) !important;}
+.ring_caption_marks text {fill: var(--muted) !important;}
 .matrix_cells_marks path, .layer_cells_marks path {stroke: var(--panel) !important;}
 .st-key-card-c_matrix [data-testid="stVegaLiteChart"], .st-key-card-c_layers [data-testid="stVegaLiteChart"] {
     overflow-x: auto; max-width: 100%;}
@@ -255,6 +265,7 @@ div[data-baseweb="select"] svg {color: var(--text) !important; fill: var(--text)
 [data-testid="stMultiSelect"] input::placeholder {color: var(--muted) !important; opacity: 1;}
 .stApp pre, .stApp code {background: var(--raised) !important; color: var(--text) !important;}
 .stButton > button {border-radius: 8px; border: 1px solid var(--line); background: var(--text); color: var(--bg); font-weight: 600;}
+.stButton > button p, .stButton > button span {color: var(--bg) !important;}
 .stButton > button:hover {border-color: var(--text); color: var(--bg); opacity: .9;}
 label:has([role="switch"]) > div:first-of-type {background: var(--line) !important;}
 label:has([role="switch"][aria-checked="true"]) > div:first-of-type {background: var(--accent) !important;}
@@ -264,7 +275,7 @@ div[data-testid="stExpander"] summary * {color: var(--text) !important;}
 
 /* Reference look: card headers with a divider, full-width list rows, big figures, donut total */
 [class*="st-key-head-"] {margin: -1rem -1.1rem .35rem; padding: .85rem 1.1rem; border-bottom: 1px solid var(--line);
-                         align-items: center;}
+                         align-items: center; width: calc(100% + 2.2rem) !important; max-width: none !important;}
 [class*="st-key-head-"] [data-testid="stHorizontalBlock"] {align-items: center; gap: .5rem;}
 .card-title {font-size: .95rem; font-weight: 500; line-height: 1.4;}
 [class*="st-key-head-"] [data-testid="stPageLink"] {display: flex; justify-content: flex-end;}
@@ -280,10 +291,10 @@ div[data-testid="stExpander"] summary * {color: var(--text) !important;}
 .dots {display: flex; gap: .85rem; flex: none;}
 .dotn {display: inline-flex; align-items: center; gap: .35rem; color: var(--muted); font-size: .85rem;}
 .dotn .dot {width: 8px; height: 8px; border-radius: 50%; background: var(--c);}
-.st-key-ring-wrap {position: relative;}
-.ring-total {position: absolute; top: 108px; left: 0; right: 0; transform: translateY(-50%); text-align: center;
-             pointer-events: none; color: var(--muted); font-size: .85rem; line-height: 1.5;}
-.ring-total b {display: block; color: var(--text); font-size: 1.5rem; font-weight: 600;}
+.ring-legend {display: flex; justify-content: center; flex-wrap: wrap; gap: .5rem 1rem; margin-top: .4rem; font-size: .85rem;}
+.ring-legend span {display: inline-flex; align-items: center; gap: .35rem;}
+.ring-legend i {width: 9px; height: 9px; border-radius: 50%; background: var(--c); display: inline-block;}
+.ring-legend b {font-weight: 600;}
 .dot-sw {display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: .55rem;}
 .muted-n {color: var(--muted); font-size: .85rem; flex: none;}
 .big {text-align: right; font-size: 2.1rem; font-weight: 600; letter-spacing: -.02em; line-height: 1.1;
@@ -297,6 +308,22 @@ div[data-testid="stExpander"] summary * {color: var(--text) !important;}
 .st-key-cta a p, .st-key-cta a span {color: #0a0a0a !important; font-weight: 600; font-size: .9rem;}
 .st-key-tools [data-testid="stPopover"] button {border-radius: 10px; border: 1px solid var(--line); background: var(--panel);
                                                color: var(--text); width: 100%; justify-content: flex-start;}
+
+/* Security domain results, readiness summary and the evidence viewer's field rows */
+.domains {display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: .4rem; padding: .6rem 0 .4rem;}
+.domain {display: flex; flex-direction: column; align-items: center; gap: .4rem; text-align: center; padding: .5rem .2rem;}
+.domain-name {font-size: .85rem; color: var(--text);}
+.domain-res {display: flex; gap: .5rem; flex-wrap: wrap; justify-content: center; font-size: .78rem;}
+.domain-res span {display: inline-flex; align-items: center; gap: .2rem; color: var(--c);}
+.ready-grid {display: grid; grid-template-columns: repeat(4, 1fr); gap: .6rem; margin: .5rem 0 .6rem;}
+.ready-box {border: 1px solid var(--line); border-radius: 10px; padding: .65rem .8rem; border-left: 3px solid var(--c);}
+.ready-box b {font-size: 1.6rem; font-weight: 600; display: block; line-height: 1.2;}
+.ready-box span {color: var(--muted); font-size: .8rem;}
+.ev-section {font-size: .75rem; color: var(--muted); margin: .8rem 0 .3rem; font-weight: 500;}
+.pred {display: flex; justify-content: space-between; gap: .8rem; padding: .3rem 0; border-bottom: 1px solid var(--line);
+       font-size: .82rem;}
+.pred:last-child {border-bottom: none;}
+@media (max-width: 900px) { .ready-grid {grid-template-columns: repeat(2, 1fr);} }
 
 /* Phone width: tiles and header stack */
 @media (max-width: 640px) {

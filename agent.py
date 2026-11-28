@@ -35,9 +35,11 @@ Tools the model can use:
 ----------------------------------------------------------------------------
 """
 
+import fnmatch
 import inspect
 import json
 import os
+import threading
 from pathlib import Path
 
 import ollama
@@ -102,9 +104,15 @@ def chat_options(model) -> dict:
     return {"num_ctx": context_for(model)}
 
 
+def ollama_client(timeout=CHAT_TIMEOUT):
+    """An Ollama client that gives up after `timeout` seconds, so a hung model cannot freeze the app (threat model gap 4).
+    For a stream the limit applies to each wait for the next part, not to the whole reply."""
+    return ollama.Client(timeout=timeout)
+
+
 def _chat(**kwargs):
     """One model call with a timeout. Same arguments as ollama.chat."""
-    return ollama.Client(timeout=CHAT_TIMEOUT).chat(**kwargs)
+    return ollama_client().chat(**kwargs)
 
 _PROMPT_START = (
     "You are a helpful local assistant with access to the user's notes in the "
@@ -142,24 +150,77 @@ def _safe_path(name: str) -> Path:
     return path
 
 
+class ApprovalRefused(ValueError):
+    """Approve was refused: the change breaks the manifest of the pack it claims to come from (pack-contract E3)."""
+
+
+MAX_VERSIONS = 100  # a new note with a taken name is saved as name_new1 ... name_new99, never over the old file
+
+
+def planned_target(item: dict) -> dict:
+    """What approving this pending write will do, worked out by the same rules as approve_write (security fix 2).
+
+    Display only: approve_write does not use it. Returns {"action", "file", "text"} where action is "create",
+    "append", "mark_done" or "refused", and text is a plain sentence for the inbox. A file that appears between this
+    preview and the click is still never overwritten; the result message then names the file actually written.
+    """
+    try:
+        path = _safe_path(item["name"])
+    except (KeyError, ValueError) as e:
+        return {"action": "refused", "file": str(item.get("name", "")), "text": f"Approving will fail: {e}"}
+    mode = item.get("mode")
+    if mode == "mark_done":
+        return {"action": "mark_done", "file": path.name, "text": f"Will mark one task done in {path.name}"}
+    if mode == "append":
+        if os.path.lexists(path):
+            return {"action": "append", "file": path.name, "text": f"Will add to the end of {path.name}"}
+        return {"action": "create", "file": path.name, "text": f"Will create {path.name}"}
+    for attempt in range(MAX_VERSIONS):
+        candidate = path if attempt == 0 else path.with_name(f"{path.stem}_new{attempt}{path.suffix}")
+        if not os.path.lexists(candidate):
+            note = "" if attempt == 0 else f" ({path.name} already exists, so it is not changed)"
+            return {"action": "create", "file": candidate.name, "text": f"Will create {candidate.name}{note}"}
+    return {"action": "refused", "file": path.name,
+            "text": f"Approving will fail: too many versions of {path.name} already exist"}
+
+
+# Approved changes to an existing file (append, mark done) happen one at a time. Streamlit runs each browser session in
+# its own thread of one process, so two approvals at once must not interleave (threat model gap 5).
+_WRITE_LOCK = threading.Lock()
+MARK_DONE_TRIES = 3
+
+
 def _mark_done(path: Path, open_line: str) -> str:
     """Change the first exact match of an open task line to done. Nothing else changes.
 
     open_line is the full line with its newline, for example "- [ ] buy milk\n".
+    The new text is written to a temporary file and swapped in, so the file is never half-written. Just before the
+    swap the file is read again: if anything changed it (another approval, or the user editing tasks.md), the work
+    starts again from the new text, so that change is kept. The check and the swap are not one step, so an edit in
+    that last instant can still be lost; that window is now microseconds, not the whole rewrite.
     """
-    if not path.exists():
-        return f"No {path.name} yet; nothing changed."
-    lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
     target = open_line.rstrip("\r\n")
-    for i, line in enumerate(lines):
-        if line.rstrip("\r\n") == target:
-            ending = line[len(target):]  # keep the line's own newline
-            lines[i] = "- [x]" + target[len("- [ ]"):] + ending
+    with _WRITE_LOCK:
+        for _ in range(MARK_DONE_TRIES):
+            if not path.exists():
+                return f"No {path.name} yet; nothing changed."
+            before = path.read_bytes()
+            lines = before.decode("utf-8").splitlines(keepends=True)
+            for i, line in enumerate(lines):
+                if line.rstrip("\r\n") == target:
+                    ending = line[len(target):]  # keep the line's own newline
+                    lines[i] = "- [x]" + target[len("- [ ]"):] + ending
+                    break
+            else:
+                return "No matching open task; nothing changed."
             tmp = path.with_suffix(".tmp")
-            tmp.write_text("".join(lines), encoding="utf-8")
+            tmp.write_text("".join(lines), encoding="utf-8", newline="")  # write the line endings exactly as read
+            if path.read_bytes() != before:  # changed while we worked: start again from the new text
+                tmp.unlink()
+                continue
             tmp.replace(path)
             return f"Marked done in {path.name}"
-    return "No matching open task; nothing changed."
+        return f"{path.name} kept changing while it was being updated; nothing changed. Approve it again."
 
 
 class DocAgent:
@@ -179,6 +240,7 @@ class DocAgent:
         self.max_steps = max_steps
         # [{"name": ..., "content": ..., "mode": "create" or "append"}]
         self.pending_writes = [] if pending_writes is None else pending_writes
+        self.pack_rules = {}  # agent label -> (write patterns, write modes), registered by the pack loader
         self.tools = self._build_tools(rag_search)
         if self.system_prompt == SYSTEM_PROMPT and "search_docs" not in self.tools:
             self.system_prompt = SYSTEM_PROMPT_NO_SEARCH  # only tell it about tools it has
@@ -259,19 +321,47 @@ class DocAgent:
             return f"Error: {e}"
 
     # --------------------------------------------------------------- approvals
+    def register_pack_rules(self, label: str, write, write_modes) -> None:
+        """Remember what a pack's manifest lets it write, so Approve can check an item against it (pack-contract E3)."""
+        self.pack_rules[label] = (tuple(write), frozenset(write_modes))
+
+    def pack_refusal(self, item):
+        """Why Approve must refuse this item, or None. Only items labelled with a registered pack are checked: the name
+        (as given and as the file guard reduces it) must be on the pack's write list, and the mode on its mode list.
+        Items from the core (no label, or a label no pack registered) are unchanged."""
+        rules = self.pack_rules.get(item.get("agent")) if isinstance(item, dict) else None
+        if rules is None:
+            return None
+        patterns, modes = rules
+        label, name = item["agent"], str(item.get("name", ""))
+        shown = name if len(name) <= 60 else name[:57] + "..."
+        try:
+            reduced = check_note_name(name)
+        except ValueError:
+            return f"{shown!r} is not a file name {label} may change."
+        if not all(any(fnmatch.fnmatchcase(n, p) for p in patterns) for n in (name, reduced)):
+            return f"{reduced!r} is not on {label}'s write list."
+        mode = item.get("mode", "create")
+        if mode not in modes:
+            return f"{label} may not make a change of kind '{mode}'."
+        return None
+
     def approve_write(self, index: int) -> str:
         item = self.pending_writes.pop(index)
+        refusal = self.pack_refusal(item)
+        if refusal:
+            raise ApprovalRefused(refusal)
         path = _safe_path(item["name"])
         if item.get("mode") == "mark_done":
             return _mark_done(path, item["content"])
         if item.get("mode") == "append":
             # Add to the end of an existing file, or create it. Never rewrites what is there.
-            with path.open("a", encoding="utf-8") as f:
+            with _WRITE_LOCK, path.open("a", encoding="utf-8") as f:
                 f.write(item["content"])
             return f"Added to {path.name}"
         # Exclusive create ("x") makes the check and the write one step, so a file
         # that appears after the check is never overwritten.
-        for attempt in range(100):
+        for attempt in range(MAX_VERSIONS):
             candidate = path if attempt == 0 else path.with_name(f"{path.stem}_new{attempt}{path.suffix}")
             try:
                 with candidate.open("x", encoding="utf-8") as f:

@@ -1,0 +1,15 @@
+{
+  "batch_id": "6969c8e9",
+  "planned": 5,
+  "completed": 2,
+  "stopped": true,
+  "anomaly": "integrity",
+  "reasons": [
+    "inventory: containers appeared: bbec4ead6f01ccb44e62f339f161cd352e8ed4fd99b7f228990b77afa7caceae localai-dashboard-1",
+    "inventory: containers appeared: d9f51dbb082b687d770cfa56432de3e31b871ed9c161e9891a7e6f252cc3979f localai-localai-1",
+    "inventory: containers disappeared: 677c8014fcd5e0702799f8235b0922dd7eaa83b947adb9560493650e99d753ef localai-dashboard-1",
+    "inventory: containers disappeared: ef996a25a319b2cd41ce7937a5efb9b1c32b21a7a4145e0cbf082c32c41dc720 localai-localai-1"
+  ],
+  "stopped_at": 1,
+  "message": "INTEGRITY ANOMALY: the batch is stopped. Evidence is kept; the sandbox was removed.\n  - inventory: containers appeared: bbec4ead6f01ccb44e62f339f161cd352e8ed4fd99b7f228990b77afa7caceae localai-dashboard-1\n  - inventory: containers appeared: d9f51dbb082b687d770cfa56432de3e31b871ed9c161e9891a7e6f252cc3979f localai-localai-1\n  - inventory: containers disappeared: 677c8014fcd5e0702799f8235b0922dd7eaa83b947adb9560493650e99d753ef localai-dashboard-1\n  - inventory: containers disappeared: ef996a25a319b2cd41ce7937a5efb9b1c32b21a7a4145e0cbf082c32c41dc720 localai-localai-1\nKept trial folders: ~/.agent-workbench/evidence/<run id>/\nNothing was retried."
+}

@@ -8,6 +8,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # project root
+from tests._platform import app_container_only  # noqa: E402
 
 import agent as agent_mod
 from brain import ActivityLog
@@ -249,6 +250,29 @@ class GatewayTests(unittest.TestCase):
         self.assertEqual(self.pending[1]["mode"], "append")
         self.assertTrue(all(item["agent"] == "tasks" for item in self.pending))
 
+    def test_a_glob_cannot_be_used_to_reach_a_file_outside_the_list(self):
+        # 'lesson-x/../tasks.md' matches the pattern lesson-*.md as typed, but the file guard drops the folder part and
+        # would use tasks.md. The gateway must refuse on the reduced name too (found by the pack contract).
+        text = replace(replace(GOOD, 'read = ["tasks.md"]', 'read = ["lesson-*.md"]'),
+                       'write = ["tasks.md"]', 'write = ["lesson-*.md"]')
+        text = replace(text, 'write_modes = ["append", "mark_done"]', 'write_modes = ["create"]')
+        gw = Gateway(parse_manifest(text), self.pending)
+        (self.docs / "lesson-ok.md").write_text("fine\n", encoding="utf-8")
+        self.assertIn("fine", gw.read_text("lesson-ok.md"))
+        for name in ("lesson-x/../tasks.md", "lesson-x\\..\\tasks.md", "lesson-/../evil.md"):
+            with self.subTest(name=name):
+                with self.assertRaises(PermissionDenied):
+                    gw.read_text(name)
+                with self.assertRaises(PermissionDenied):
+                    gw.read_raw(name)
+                with self.assertRaises(PermissionDenied):
+                    gw.has_line(name, "x")
+                with self.assertRaises(PermissionDenied):
+                    gw.propose_create(name, "x")
+        self.assertEqual(self.pending, [])
+        gw.propose_create("lesson-new.md", "ok")  # a listed name still works
+        self.assertEqual(self.pending[0]["name"], "lesson-new.md")
+
     def test_a_mode_or_file_not_in_the_manifest_is_refused(self):
         with self.assertRaises(PermissionDenied):
             self.gw.propose_create("tasks.md", "new")          # create is not in write_modes
@@ -256,6 +280,7 @@ class GatewayTests(unittest.TestCase):
             self.gw.propose_append("ideas.md", "x")            # ideas.md is not in write
         self.assertEqual(self.pending, [])
 
+    @app_container_only
     def test_the_log_gets_lengths_not_text(self):
         secret = "my private plan"
         self.gw.log_event("pack_proposed", note=secret, count=2)

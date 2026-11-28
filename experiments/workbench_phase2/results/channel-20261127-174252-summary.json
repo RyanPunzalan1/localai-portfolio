@@ -1,0 +1,262 @@
+[
+  {
+    "profile": "docker-none",
+    "ok": true,
+    "checks": {
+      "chat reply through the channel": true,
+      "streamed chat through the channel": true,
+      "canary seen host-side": true,
+      "reply cap lowered (5000 -> 24)": true,
+      "pull refused": true,
+      "delete refused": true,
+      "create refused": true,
+      "other model refused": true,
+      "approval denied on the host": true,
+      "direct Ollama not reachable": true,
+      "internet not reachable": true,
+      "host dashboard not reachable": true,
+      "no channel violation": true,
+      "isolation unchanged with channel running": true,
+      "refused calls never forwarded": true
+    },
+    "agent": {
+      "chat": [
+        200,
+        "OK"
+      ],
+      "chat_stream": [
+        200,
+        17
+      ],
+      "pull": [
+        403
+      ],
+      "delete": [
+        403
+      ],
+      "create": [
+        403
+      ],
+      "other_model": [
+        403
+      ],
+      "approval": [
+        200,
+        "deny"
+      ],
+      "direct_ollama": "refused: gaierror",
+      "internet": "refused: OSError",
+      "host_dashboard": "refused: gaierror"
+    },
+    "policy_records": [
+      {
+        "time": 1795830175.235,
+        "method": "POST",
+        "path": "/v1/chat/completions",
+        "decision": "forwarded",
+        "model": "hermes3",
+        "messages": 1,
+        "prompt_chars": 48,
+        "canaries_in_prompt": [
+          "env"
+        ],
+        "tools_offered": 0,
+        "stream": false,
+        "reply_cap": 24,
+        "upstream_status": 200,
+        "reply_bytes": 327,
+        "tool_calls_requested": []
+      },
+      {
+        "time": 1795830175.608,
+        "method": "POST",
+        "path": "/api/chat",
+        "decision": "forwarded",
+        "model": "hermes3",
+        "messages": 1,
+        "prompt_chars": 6,
+        "canaries_in_prompt": [],
+        "tools_offered": 0,
+        "stream": true,
+        "reply_cap": 24,
+        "upstream_status": 200,
+        "reply_bytes": 2291,
+        "tool_calls_requested": []
+      },
+      {
+        "time": 1795830175.611,
+        "method": "POST",
+        "path": "/api/pull",
+        "decision": "refused",
+        "reason": "path not allowed"
+      },
+      {
+        "time": 1795830175.615,
+        "method": "DELETE",
+        "path": "/api/delete",
+        "decision": "refused",
+        "reason": "method not allowed"
+      },
+      {
+        "time": 1795830175.617,
+        "method": "POST",
+        "path": "/api/create",
+        "decision": "refused",
+        "reason": "path not allowed"
+      },
+      {
+        "time": 1795830175.62,
+        "method": "POST",
+        "path": "/api/chat",
+        "decision": "refused",
+        "reason": "model not allowed",
+        "model": "gpt-oss:20b"
+      }
+    ],
+    "approvals": [
+      {
+        "action": "write",
+        "target": "backup.md",
+        "decision": "deny"
+      }
+    ],
+    "isolation": {
+      "config_ok": true,
+      "preflight_ok": true,
+      "runtime_log_ok": null,
+      "negative_control_ok": null,
+      "problems": []
+    },
+    "records_written": 9
+  },
+  {
+    "profile": "sbx-deny-all",
+    "ok": true,
+    "checks": {
+      "chat reply through the channel": true,
+      "streamed chat through the channel": true,
+      "canary seen host-side": true,
+      "reply cap lowered (5000 -> 24)": true,
+      "pull refused": true,
+      "delete refused": true,
+      "create refused": true,
+      "other model refused": true,
+      "approval denied on the host": true,
+      "direct Ollama not reachable": true,
+      "internet not reachable": true,
+      "host dashboard not reachable": true,
+      "no channel violation": true,
+      "isolation unchanged with channel running": true,
+      "refused calls never forwarded": true
+    },
+    "agent": {
+      "chat": [
+        200,
+        "OK"
+      ],
+      "chat_stream": [
+        200,
+        10
+      ],
+      "pull": [
+        403
+      ],
+      "delete": [
+        403
+      ],
+      "create": [
+        403
+      ],
+      "other_model": [
+        403
+      ],
+      "approval": [
+        200,
+        "deny"
+      ],
+      "direct_ollama": "no response",
+      "internet": "no response",
+      "host_dashboard": "no response"
+    },
+    "policy_records": [
+      {
+        "time": 1795830186.134,
+        "method": "POST",
+        "path": "/v1/chat/completions",
+        "decision": "forwarded",
+        "model": "hermes3",
+        "messages": 1,
+        "prompt_chars": 48,
+        "canaries_in_prompt": [
+          "env"
+        ],
+        "tools_offered": 0,
+        "stream": false,
+        "reply_cap": 24,
+        "upstream_status": 200,
+        "reply_bytes": 328,
+        "tool_calls_requested": []
+      },
+      {
+        "time": 1795830186.332,
+        "method": "POST",
+        "path": "/api/chat",
+        "decision": "forwarded",
+        "model": "hermes3",
+        "messages": 1,
+        "prompt_chars": 6,
+        "canaries_in_prompt": [],
+        "tools_offered": 0,
+        "stream": true,
+        "reply_cap": 24,
+        "upstream_status": 200,
+        "reply_bytes": 1431,
+        "tool_calls_requested": []
+      },
+      {
+        "time": 1795830186.335,
+        "method": "POST",
+        "path": "/api/pull",
+        "decision": "refused",
+        "reason": "path not allowed"
+      },
+      {
+        "time": 1795830186.337,
+        "method": "DELETE",
+        "path": "/api/delete",
+        "decision": "refused",
+        "reason": "method not allowed"
+      },
+      {
+        "time": 1795830186.338,
+        "method": "POST",
+        "path": "/api/create",
+        "decision": "refused",
+        "reason": "path not allowed"
+      },
+      {
+        "time": 1795830186.339,
+        "method": "POST",
+        "path": "/api/chat",
+        "decision": "refused",
+        "reason": "model not allowed",
+        "model": "gpt-oss:20b"
+      }
+    ],
+    "approvals": [
+      {
+        "action": "write",
+        "target": "backup.md",
+        "decision": "deny"
+      }
+    ],
+    "isolation": {
+      "config_ok": true,
+      "preflight_ok": true,
+      "runtime_log_ok": true,
+      "negative_control_ok": null,
+      "problems": []
+    },
+    "records_written": 9
+  }
+]

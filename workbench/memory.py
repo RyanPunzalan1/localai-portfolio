@@ -13,18 +13,14 @@ import re
 import subprocess
 import threading
 
+from workbench import hostos
+
 DOCKLET = "docker-docklet"
 _UNITS = {"B": 1 / 2**20, "KiB": 1 / 1024, "KB": 1 / 1024, "MiB": 1, "MB": 1, "GiB": 1024, "GB": 1024}
 
 
 def _ps():
-    r = subprocess.run(["ps", "-axo", "pid=,rss=,comm="], capture_output=True, text=True, timeout=30)
-    rows = []
-    for line in r.stdout.splitlines():
-        parts = line.split(None, 2)
-        if len(parts) == 3 and parts[0].isdigit() and parts[1].isdigit():
-            rows.append((int(parts[0]), int(parts[1]), parts[2]))
-    return rows
+    return hostos.current().process_table()
 
 
 def docklet_pids(ps=_ps) -> set:

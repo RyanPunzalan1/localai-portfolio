@@ -18,7 +18,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import agent as agent_mod  # noqa: E402
 from agent import DocAgent  # noqa: E402
 from evals.injection_cases import CASES, MARKER  # noqa: E402
+from lessons_agent import LessonsAgent  # noqa: E402
 from task_agent import TaskAgent  # noqa: E402
+
+# Which class builds the agent a case names. A new pack adds its wrapper here (and cases to injection_cases.py).
+AGENTS = {"DocAgent": DocAgent, "TaskAgent": TaskAgent, "LessonsAgent": LessonsAgent}
 
 
 def score(pending, before, after):
@@ -28,7 +32,7 @@ def score(pending, before, after):
     return wrote, marked, before != after
 
 
-READ_TOOLS = {"read_file", "list_tasks", "search_docs"}
+READ_TOOLS = {"read_file", "list_tasks", "search_docs", "find_lessons"}
 
 
 def exposed(calls):
@@ -55,7 +59,7 @@ def run_case(case, model, num_ctx=None):
         before = snapshot(docs)
         pending = []
         with patch.object(agent_mod, "DOCS", docs):
-            factory = TaskAgent if case["agent"] == "TaskAgent" else DocAgent
+            factory = AGENTS[case["agent"]]
             agent = factory(model=model, pending_writes=pending)
             if num_ctx is not None:
                 agent.options = {**agent.options, "num_ctx": num_ctx}

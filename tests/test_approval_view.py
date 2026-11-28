@@ -42,6 +42,13 @@ class Warnings(unittest.TestCase):
             with self.subTest(item=item):
                 self.assertEqual(av.warnings_html(item), "")
 
+    def test_target_not_in_request_sits_after_read_only(self):
+        item = {"warnings": [{"code": "not_mentioned_in_answer", "message": "a"},
+                             {"code": "target_not_in_request", "message": "b"},
+                             {"code": "request_read_only", "message": "c"}]}
+        self.assertEqual([w["code"] for w in av.warnings_of(item)],
+                         ["request_read_only", "target_not_in_request", "not_mentioned_in_answer"])
+
     def test_unknown_code_still_shown_last(self):
         item = {"warnings": [{"code": "new_kind", "message": "Something new."},
                              {"code": "answer_claims_done", "message": "Claims done."}]}
@@ -89,6 +96,61 @@ class Provenance(unittest.TestCase):
         av.warnings_html(ITEM)
         av.provenance_html(ITEM)
         self.assertEqual(ITEM, before)
+
+
+class WhatApproveWillDo(unittest.TestCase):
+    """Security fix 2: the Chat banner is decided by the inbox count, and each card says what Approve will do."""
+
+    def test_banner_counts_the_inbox(self):
+        self.assertEqual(av.waiting_banner(0), "")
+        self.assertIn("1 change is waiting", av.waiting_banner(1))
+        self.assertIn("3 changes are waiting", av.waiting_banner(3))
+        self.assertIn("Nothing is saved yet", av.waiting_banner(2))
+
+    def test_banner_ignores_non_counts(self):
+        for bad in (None, -1, "2", True, 2.0):
+            with self.subTest(bad=bad):
+                self.assertEqual(av.waiting_banner(bad), "")
+
+    def test_target_line_is_escaped(self):
+        html = av.target_html({"action": "create", "file": "x", "text": "Will create <img src=x onerror=1>.md"})
+        self.assertNotIn("<img", html)
+        self.assertIn("&lt;img", html)
+        self.assertIn('class="target"', html)
+
+    def test_refused_target_is_marked(self):
+        self.assertIn('class="target refused"', av.target_html({"action": "refused", "text": "Approving will fail"}))
+
+    def test_missing_plan_gives_nothing(self):
+        for bad in (None, {}, {"action": "create"}, "text"):
+            with self.subTest(bad=bad):
+                self.assertEqual(av.target_html(bad), "")
+
+
+class UnreadableNotice(unittest.TestCase):
+    def test_nothing_set_aside_means_no_notice(self):
+        for value in (None, [], ()):
+            self.assertEqual(av.unreadable_notice(value), "")
+
+    def test_one_file_names_it_and_says_it_was_kept(self):
+        text = av.unreadable_notice(["pending_writes.json.unreadable-20261128T000000000000Z"])
+        self.assertIn("A saved approvals file could not be used", text)
+        self.assertIn("logs/pending_writes.json.unreadable-20261128T000000000000Z", text)
+        self.assertIn("not deleted", text)
+        self.assertIn("python -m data_schema check", text)
+
+    def test_several_files_are_counted(self):
+        text = av.unreadable_notice(["a.unreadable-1", "a.unreadable-2"])
+        self.assertIn("2 saved approvals files", text)
+
+    def test_a_name_that_is_not_a_plain_file_name_is_never_shown(self):
+        text = av.unreadable_notice(["x](javascript:alert(1)) <b>", "../../etc/passwd x"])
+        self.assertNotIn("javascript", text)
+        self.assertNotIn("<b>", text)
+        self.assertIn("files in logs/", text)
+
+    def test_non_strings_are_ignored(self):
+        self.assertEqual(av.unreadable_notice([None, 5]), "")
 
 
 class RendersInStreamlit(unittest.TestCase):

@@ -42,19 +42,43 @@ class InventoryError(Exception):
     """The host inventory could not be read. Callers stop rather than run blind."""
 
 
+REPARSE = 0x400  # FILE_ATTRIBUTE_REPARSE_POINT
+
+
+def _ntfs_extra(path: Path, st) -> str:
+    """Windows only: file attributes and alternate data streams, which st_mode and the content hash do not show."""
+    from workbench import digest_windows
+    return f":{getattr(st, 'st_file_attributes', 0):x}:{','.join(digest_windows.streams(path))}"
+
+
+def _is_reparse(st) -> bool:
+    return bool(getattr(st, "st_file_attributes", 0) & REPARSE)
+
+
 def _entry(path: Path) -> str:
     st = os.lstat(path)
     mode = st.st_mode
     meta = f"{stat.S_IMODE(mode):o}:{st.st_uid}:{st.st_size}:{st.st_nlink}:{st.st_ino}:{st.st_mtime_ns}:{st.st_ctime_ns}"
-    if stat.S_ISREG(mode):
-        fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    if os.name == "nt":
+        meta += _ntfs_extra(path, st)
+    if stat.S_ISLNK(mode):
         try:
+            target = os.readlink(path)
+        except ValueError:  # not an NT symlink (for example a WSL one): the metadata alone identifies it
+            target = "(unreadable)"
+        return f"link:{meta}:{target}"
+    if _is_reparse(st):  # a junction or other reparse point: recorded, never opened or followed
+        return f"reparse:{meta}"
+    if stat.S_ISREG(mode):
+        fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_BINARY", 0))
+        try:
+            opened = os.fstat(fd)  # the name may have been swapped for a link since lstat: it must be the same file
+            if not stat.S_ISREG(opened.st_mode) or (opened.st_ino, opened.st_dev) != (st.st_ino, st.st_dev):
+                raise OSError("tripwire entry changed while it was being read")
             h = hashlib.sha256(os.read(fd, MAX_READ)).hexdigest()
         finally:
             os.close(fd)
         return f"file:{meta}:{h}"
-    if stat.S_ISLNK(mode):
-        return f"link:{meta}:{os.readlink(path)}"
     if stat.S_ISDIR(mode):
         return f"dir:{meta}"
     return f"special:{meta}"
@@ -64,11 +88,14 @@ def snapshot(directory) -> dict:
     """{name: fingerprint} for a tripwire folder and its direct entries. Never follows a link; never recurses."""
     d = Path(directory)
     try:
-        if not stat.S_ISDIR(os.lstat(d).st_mode):
+        st = os.lstat(d)
+        if not stat.S_ISDIR(st.st_mode) or _is_reparse(st):
             raise TripwireError(f"tripwire folder is not a plain folder: {d}")
         snap = {".": _entry(d)}
-        for e in os.scandir(d):
-            snap[e.name] = _entry(d / e.name)
+        with os.scandir(d) as it:
+            names = [e.name for e in it]
+        for name in names:
+            snap[name] = _entry(d / name)
         return snap
     except OSError as e:
         raise TripwireError(f"cannot read tripwire folder {d}: {e.__class__.__name__}") from None
@@ -93,15 +120,17 @@ class Tripwire:
             self.dir.mkdir(exist_ok=True, mode=0o700)
         except OSError as e:
             raise TripwireError(f"cannot create tripwire folder: {e.__class__.__name__}") from None
-        if not stat.S_ISDIR(os.lstat(self.dir).st_mode):  # a planted link in place of our folder
+        st = os.lstat(self.dir)
+        if not stat.S_ISDIR(st.st_mode) or _is_reparse(st):  # a planted link or junction in place of our folder
             raise TripwireError(f"tripwire folder is not a plain folder: {self.dir}")
         self.token = TOKEN_PREFIX + secrets.token_hex(12)
         self.path = self.dir / name
         try:
-            fd = os.open(self.path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
+            fd = os.open(self.path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+                         | getattr(os, "O_BINARY", 0), 0o600)
         except OSError as e:
             raise TripwireError(f"cannot plant tripwire {self.path.name}: {e.__class__.__name__}") from None
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
             f.write(README + f"token: {self.token}\n")
         self.baseline = snapshot(self.dir)
 
@@ -135,13 +164,17 @@ INVENTORY_COMMANDS = {
     "containers": ["docker", "ps", "-a", "--no-trunc", "--format", "{{.ID}} {{.Names}}"],
     "volumes": ["docker", "volume", "ls", "-q"],
     "networks": ["docker", "network", "ls", "--no-trunc", "--format", "{{.ID}} {{.Name}}"],
-    "sandboxes": ["sbx", "ls", "-q"],
 }
+SANDBOX_COMMAND = ["sbx", "ls", "-q"]  # the VM tier (macOS only); the Docker tier has no sbx sandboxes to list
 
 
-def inventory(run=_lines) -> dict:
-    """What Docker and sbx currently hold. Raises InventoryError if any part cannot be read."""
-    return {k: run(cmd) for k, cmd in INVENTORY_COMMANDS.items()}
+def inventory(run=_lines, sandboxes=None) -> dict:
+    """What Docker (and, when `sandboxes`, sbx) currently hold. Raises InventoryError if any part cannot be read.
+    `sandboxes` defaults to True off Windows and False on Windows, where sbx is not used (the VM tier is refused)."""
+    if sandboxes is None:
+        sandboxes = os.name != "nt"
+    cmds = {**INVENTORY_COMMANDS, **({"sandboxes": SANDBOX_COMMAND} if sandboxes else {})}
+    return {k: run(cmd) for k, cmd in cmds.items()}
 
 
 def inventory_changes(before: dict, after: dict) -> list:

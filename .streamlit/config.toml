@@ -1,3 +1,8 @@
 # No telemetry (CLAUDE.md rule). Streamlit sends anonymous usage statistics by default.
 [browser]
 gatherUsageStats = false
+
+# Hide Streamlit's developer controls (Deploy, Rerun, Clear cache) from the toolbar and menu (roadmap U.8).
+# This app is local only and is never deployed from the UI.
+[client]
+toolbarMode = "viewer"

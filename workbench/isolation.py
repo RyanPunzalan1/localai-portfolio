@@ -12,10 +12,9 @@ or sbx. The run_* helpers call the runtimes. A non-empty problem list means: do 
 
 import json
 import re
-import subprocess
 from pathlib import Path
 
-from workbench import specs
+from workbench import runtime, specs
 
 PREFLIGHT = Path(__file__).resolve().parent / "preflight.py"
 # How sbx names the preflight's TCP targets in its policy log (host.docker.internal is logged as localhost).
@@ -82,8 +81,11 @@ def check_docker_inspect(inspect: dict, profile) -> list:
     allowed_targets = {"/workspace"} | ({"/restricted"} if profile.restricted_mount else set())
     for m in inspect.get("Mounts") or []:
         dest, src = m.get("Destination", ""), str(m.get("Source", ""))
-        if "docker.sock" in src or "docker.sock" in dest:
-            problems.append(f"docker socket mounted: {src}")
+        parts = {x.lower() for x in re.split(r"[\\/]+", src)}
+        if any(b in src.lower() or b in dest.lower() for b in specs.DOCKER_ENDPOINT_MARKERS):
+            problems.append(f"docker socket or pipe mounted: {src}")
+        elif any(name.lower() in parts for name in specs.PROTECTED_HOME_FOLDERS if "/" not in name):
+            problems.append(f"protected host folder mounted: {src}")
         elif dest not in allowed_targets:
             problems.append(f"unexpected mount: {src} -> {dest}")
         elif dest == "/restricted" and m.get("RW"):
@@ -165,8 +167,8 @@ def check_sbx_host(settings: dict, mcp_servers, required=None) -> list:
 
 def check_sbx_inspect(info: dict, name: str, workspace, primary, pinned=None) -> list:
     """`sbx inspect <name> --format json`: the sandbox has exactly the two host mounts the workbench made, no runtime
-    mounts, no MCP servers and a static (fixed, empty) MCP set, no published ports, a sandbox-scoped network policy, and
-    the validated daemon version."""
+    mounts, no MCP servers and a static (fixed, empty) MCP set, the pinned kit, no published ports, a sandbox-scoped
+    network policy, and the validated daemon version."""
     pinned = pinned or specs.SBX_VERSION
     if not isinstance(info, dict) or not info:
         return ["sbx inspect returned nothing"]
@@ -183,6 +185,8 @@ def check_sbx_inspect(info: dict, name: str, workspace, primary, pinned=None) ->
     for k in ("runtime_mounts", "mcp_servers", "ports", "published_ports", "secrets"):
         if info.get(k):
             problems.append(f"sandbox has {k}: {str(info.get(k))[:120]}")
+    if info.get("kits") != [specs.SBX_KIT]:
+        problems.append(f"kits are {info.get('kits')!r}, not the pinned {specs.SBX_KIT}")
     if info.get("mcp_mode") != "static":
         problems.append(f"MCP mode is {info.get('mcp_mode')!r}, not static (the sandbox could add MCP servers mid-run)")
     if (info.get("network_policy") or {}).get("scope") != "sandbox":
@@ -192,7 +196,7 @@ def check_sbx_inspect(info: dict, name: str, workspace, primary, pinned=None) ->
 
 # ------------------------------------------------------------------ runners (call the runtimes)
 def sh(args, timeout=300, input=None):
-    return subprocess.run(args, capture_output=True, text=True, timeout=timeout, input=input)
+    return runtime.sh(args, timeout=timeout, input=input)  # one UTF-8 byte-exact runner for every sandbox command
 
 
 def run_preflight_docker(container, expect=(), probe=()):

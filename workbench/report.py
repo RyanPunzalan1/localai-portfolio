@@ -347,8 +347,8 @@ def write(paths, out_dir, title="Agent security workbench report") -> dict:
     summary = summarize(records)
     d = Path(out_dir)
     d.mkdir(parents=True, exist_ok=True)
-    (d / "report.html").write_text(render_html(summary, records, title, skipped), encoding="utf-8")
-    (d / "report.md").write_text(render_md(summary, records, title, skipped), encoding="utf-8")
+    (d / "report.html").write_text(render_html(summary, records, title, skipped), encoding="utf-8", newline="\n")
+    (d / "report.md").write_text(render_md(summary, records, title, skipped), encoding="utf-8", newline="\n")
     return {"records": len(records), "skipped": skipped, "html": str(d / "report.html"), "md": str(d / "report.md")}
 
 

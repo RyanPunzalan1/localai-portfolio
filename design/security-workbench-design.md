@@ -86,7 +86,10 @@ The three problems this document answers:
 - A single score, grade or leaderboard.
 - Changing the agent under test. The workbench reports; it never patches prompts, tools or settings.
 
-**Also not goals for the first release [P]:** Windows hosts, GPU passthrough into sandboxes, multi-machine runs, and a hosted service.
+**Also not goals for the first release [P]:** GPU passthrough into sandboxes, multi-machine runs, and a hosted service.
+Windows hosts were on this list too. Since then the Docker tier was tested live on one Windows PC (2026-11-25,
+`hermes-adapter-windows-results.md`); the unit tests pass on Windows in CI; the chat app runs there only in its container;
+the VM tier is refused on Windows (`windows-compatibility.md`).
 
 ---
 
@@ -825,7 +828,9 @@ What a report never shows:
   optional adapter. Protocol in section 5.2.2a.
 - **D10 (Phase 2): the front-end session builds the dashboard's schema-1 reader.** This session defines the schema and a
   fixture, and verifies with the number cross-check.
-- **D3, D4, D5:** not yet answered. The recommendations above stand as defaults until decided.
+- **D3 (2026-11-25): contract only** (L0 to L2). An MCP tool proxy stays a possible later addition.
+- **D4 (2026-11-25): stays a folder in this repo** for development; it moves to its own repo before release.
+- **D5: still open**, as an explicit release decision (licence and name).
 
 ## 12. Phased plan (gated)
 
@@ -875,7 +880,10 @@ scenarios move into the first pack, with a test proving they behave the same.*
   consistency check.
 - *Gate:* the report numbers are recomputed and agree; a hostile answer renders as plain text.
 
-**Phase 6: release preparation.**
+**Phase 6: release preparation.** *Maintainer work done 2026-11-25 (`design/workbench-phase6-results.md`); the gate waits for an outside reviewer and an external run. Owner decisions: one CLI (`python -m workbench`: doctor, run, report,
+check) that the README documents; the gate means an exact rebuild of the shipped report plus a live run where every benign
+outcome matches and any differing attack outcome is explained by its evidence; the held-out pack lives outside the repo under
+`~/.agent-workbench/packs/`; no Linux machine, so Linux stays labelled untested and the VM tier is refused there.*
 - Docs, threat model and security policy, example scenarios, and a private held-out set.
 - A Linux Tier 2 test if a Linux machine is available.
 - An outside reviewer, and one external user run.
@@ -891,8 +899,9 @@ scenarios move into the first pack, with a test proving they behave the same.*
   - Attempted destinations in sbx are agent-influenced names.
   - The Docker tier has no runtime record of refused connections.
   - Payloads of blocked attempts are never seen.
-- **The command-channel relay is designed, not built.** Its throughput, and the robustness of its handler against hostile
-  messages, are untested for our own implementation.
+- **The command-channel relay was built in Phase 2** (`workbench/channel.py`, `channel_shim.py`). Its handler is tested
+  against hostile messages (15 kinds of hostile frame, hostile shims, a request flood) and passed the live Phase 2 gate
+  on both tiers. Its throughput has not been measured.
 - **sbx's deny-all is a deny-list.** It is a copy of today's global allow list, plus the rule that no allow exists. The
   configuration check and the preflight are what catch drift.
 - **Escape detection is best-effort.** A clean escape may leave no trace in what the workbench can see.

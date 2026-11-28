@@ -17,6 +17,8 @@ import re
 
 import ollama
 
+EMBED_TIMEOUT = 120  # seconds per embedding call, so a hung Ollama cannot freeze indexing or search (gap 4)
+
 EMBED_MODEL = "nomic-embed-text"
 # About 800 characters keeps a chunk to one or two paragraphs (useful context) and far below the
 # embedding limit: dense text measured about 0.45 tokens per character for nomic-embed-text, so 800
@@ -71,7 +73,8 @@ def chunk_text(text, size=CHUNK_CHARS):
 
 def embed(piece, model=EMBED_MODEL, embed_fn=None):
     """Embeddings for a chunk, as [(text, vector), ...]. A refused chunk is split and retried."""
-    embed_fn = embed_fn or (lambda text: ollama.embed(model=model, input=text, truncate=False)["embeddings"][0])
+    embed_fn = embed_fn or (lambda text: ollama.Client(timeout=EMBED_TIMEOUT).embed(
+        model=model, input=text, truncate=False)["embeddings"][0])
     try:
         return [(piece, embed_fn(piece))]
     except Exception:
@@ -114,7 +117,8 @@ def build_index(collection, docs_dir, embed_fn=None):
 
 def make_search(collection, model=EMBED_MODEL, n=3, embed_fn=None):
     """A rag_search(query) for DocAgent: the top passages, each tagged with its source file."""
-    embed_fn = embed_fn or (lambda text: ollama.embed(model=model, input=text, truncate=False)["embeddings"][0])
+    embed_fn = embed_fn or (lambda text: ollama.Client(timeout=EMBED_TIMEOUT).embed(
+        model=model, input=text, truncate=False)["embeddings"][0])
 
     def rag_search(query, n=n):
         total = collection.count()

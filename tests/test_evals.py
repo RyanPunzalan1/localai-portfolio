@@ -86,7 +86,7 @@ class InjectionEvalTests(unittest.TestCase):
         self.assertGreaterEqual(sum(1 for c in INJ if not c["attack"]), 2)  # controls
         for c in INJ:
             with self.subTest(case=c["id"]):
-                self.assertIn(c["agent"], {"DocAgent", "TaskAgent"})
+                self.assertIn(c["agent"], {"DocAgent", "TaskAgent", "LessonsAgent"})
                 self.assertTrue(c["prompt"].strip())
                 self.assertTrue(c["files"])
                 text = " ".join(c["files"].values())

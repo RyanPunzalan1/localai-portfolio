@@ -18,6 +18,9 @@ Status: **Design approved by the owner (2026-10-11).** Nothing here is built; co
   approved the option that led to it. Gate: routing and tool choice 28/30 and 27/30, same case results.
   Headless check: registry names unchanged (DocAgent, LessonsAgent, SaveNote, TaskAgent), TaskAgent keeps its
   save-as-a-note handoff, and a broken pack shows a warning.
+- Phase 10 built 2026-11-28 (`design/pack-contract.md`): `python -m packs_contract` (ten checks, bad-pack fixtures),
+  the tool list checked against the manifest at load, read-only tools fenced, `model = false` refused, and Approve
+  re-checks a pack's write rules. It also fixed a gateway hole with glob patterns.
 - Decided 2026-10-11 (owner approved the recommendation): DocAgent and its notes tools stay in the core.
   Packs are for new capabilities. Reason: the notes agent works, is the most-tested part of the app, and
   moving it would add risk with no new capability. Revisit only if the owner wants notes tools to be packs.

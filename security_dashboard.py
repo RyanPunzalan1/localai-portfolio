@@ -34,7 +34,7 @@ with st.sidebar:
     html('<div class="org"><span class="org-logo">L</span><span class="org-name">LocalAI</span>'
          f'<span class="org-pill">Local</span>{theme.icon("chevron_updown", "muted", 16)}</div>')
     for i, p in enumerate(PAGES):
-        if i == 4:  # divider before Models and Settings, as in the reference layout
+        if i == 6:  # divider before Models and Settings
             html('<div class="nav-div"></div>')
         st.page_link(p)
     n_files = len(snap.security_files) + len(snap.model_files)

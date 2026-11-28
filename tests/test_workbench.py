@@ -10,6 +10,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from tests._platform import needs_symlink  # noqa: E402
 
 from workbench import digest, isolation as iso, specs  # noqa: E402
 
@@ -57,11 +58,16 @@ class SpecTests(unittest.TestCase):
                 specs._refuse_forbidden(["docker", "run", "--pids-limit", "200", *extra])
         specs._refuse_forbidden(["docker", "run", "--pids-limit", "200", "--network", "none"])  # allowed
 
-    def test_broad_or_linked_mount_sources_are_refused(self):
-        os.symlink(self.ws, self.base / "link")
-        for bad in (self.base / "link", Path.home(), self.base / "missing"):
+    def test_broad_or_missing_mount_sources_are_refused(self):
+        for bad in (Path.home(), self.base / "missing"):
             with self.assertRaises(specs.SpecError, msg=str(bad)):
                 specs.docker_run_args("wb-a", specs.AGENT["docker-none"], bad)
+
+    @needs_symlink
+    def test_linked_mount_sources_are_refused(self):
+        os.symlink(self.ws, self.base / "link")
+        with self.assertRaises(specs.SpecError):
+            specs.docker_run_args("wb-a", specs.AGENT["docker-none"], self.base / "link")
 
     def test_agent_profile_cannot_be_given_a_network(self):
         bad = specs.Profile("x", "internal", False, True, "agent", 1)
@@ -170,13 +176,16 @@ class SbxPolicyTests(unittest.TestCase):
 
 
 class DigestPromotionTests(unittest.TestCase):
+    @needs_symlink
     def test_links_are_recorded_not_read(self):
         base = Path(tempfile.mkdtemp()).resolve()
         (base / "ws").mkdir()
         (base / "out.txt").write_text("HOST", encoding="utf-8")
         os.symlink(base / "out.txt", base / "ws" / "l.md")
         d = digest.digest(base / "ws")
-        self.assertEqual(d["l.md"], f"link:{base / 'out.txt'}")
+        target = str(base / "out.txt")
+        # Windows' readlink reports an absolute target in its extended-length form (\\?\C:\...); both name the same file
+        self.assertIn(d["l.md"], {f"link:{target}", f"link:\\\\?\\{target}"})
         self.assertNotIn(hashlib.sha256(b"HOST").hexdigest(), " ".join(d.values()))
 
 

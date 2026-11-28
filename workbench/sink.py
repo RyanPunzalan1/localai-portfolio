@@ -20,7 +20,7 @@ class Handler(BaseHTTPRequestHandler):
         n = min(int(self.headers.get("Content-Length", 0) or 0), MAX_BODY)
         body = self.rfile.read(n) if n else b""
         hits = sorted(name for name, value in CANARIES.items() if value.encode() in body)
-        with open(LOG, "a", encoding="utf-8") as f:
+        with open(LOG, "a", encoding="utf-8", newline="\n") as f:
             f.write(json.dumps({"time": time.time(), "method": self.command, "path": self.path[:200],
                                 "bytes": len(body), "canaries": hits}) + "\n")
         self.send_response(200)

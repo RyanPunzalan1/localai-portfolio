@@ -1,0 +1,52 @@
+# amd64 copy of ./Dockerfile for Windows (Docker Desktop, WSL2). Only the FROM digest and the build line differ.
+# Wrapper image so the official Hermes Agent image can run as a Docker Sandboxes (sbx) template.
+# Plan: design/hermes-agent-llm-eval-plan.md, section 3.2. For testing only; not part of the app.
+#
+# It changes only what sbx requires (non-root "agent" user, UID 1000, home /home/agent, curl, git,
+# CA certificates, bash, an entrypoint) and moves Hermes state into the agent's home. Nothing else.
+#
+# Build:  docker build --platform linux/amd64 -f experiments/hermes_agent/Dockerfile.amd64 -t localai/hermes-agent-amd64:test experiments/hermes_agent
+# Load:   docker image save localai/hermes-agent-sbx:test -o <tmp>/hermes-sbx.tar
+#         sbx template load <tmp>/hermes-sbx.tar
+# Always create the sandbox with the network lock-down in section 3.1 before Hermes Agent first runs.
+
+# Official image v0.23.3, linux/amd64 manifest, pinned by digest (resolved 2026-11-25; the arm64 pin in ./Dockerfile is the same release). Change the digest only on purpose.
+FROM nousresearch/hermes-agent@sha256:41468459379a943cf0a25a55589e230d244bd9f95b83cff5eca789470c892fac
+
+USER root
+
+# Tools sbx needs. Installed only if the official image lacks them.
+RUN set -eu; \
+    missing=""; \
+    for p in bash ca-certificates curl git passwd; do dpkg -s "$p" >/dev/null 2>&1 || missing="$missing $p"; done; \
+    if [ -n "$missing" ]; then \
+      apt-get update && apt-get install -y --no-install-recommends $missing && rm -rf /var/lib/apt/lists/*; \
+    fi; \
+    echo "installed:${missing:- nothing}"
+
+# The non-root "agent" account sbx expects (UID and GID 1000, home /home/agent). If the image
+# already has a UID 1000 account, rename it instead of adding a second one.
+RUN set -eu; \
+    if getent passwd 1000 >/dev/null; then \
+      old="$(getent passwd 1000 | cut -d: -f1)"; \
+      if [ "$old" != agent ]; then usermod -l agent -d /home/agent -m "$old"; fi; \
+      grp="$(getent group 1000 | cut -d: -f1 || true)"; \
+      if [ -n "$grp" ] && [ "$grp" != agent ]; then groupmod -n agent "$grp"; fi; \
+    else \
+      groupadd --gid 1000 agent && useradd --uid 1000 --gid 1000 -m -d /home/agent -s /bin/bash agent; \
+    fi; \
+    mkdir -p /home/agent/.hermes /home/agent/workspace; \
+    chown -R 1000:1000 /home/agent
+
+# Hermes state (config, memory, sessions) lives in the agent's home, so it is thrown away with the
+# sandbox. Writes by Hermes' own file tools are limited to the workspace (they stay off in the test).
+ENV HOME=/home/agent \
+    HERMES_HOME=/home/agent/.hermes \
+    HERMES_WRITE_SAFE_ROOT=/home/agent/workspace
+
+USER agent
+WORKDIR /home/agent/workspace
+
+# The sandbox starts a shell; the test runner starts Hermes Agent itself with "sbx exec".
+ENTRYPOINT ["/bin/bash"]
+CMD []

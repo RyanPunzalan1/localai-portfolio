@@ -84,8 +84,9 @@ def tool_names(reply: bytes) -> list:
 
 class ModelPolicy:
     def __init__(self, model, max_body=256 * 1024, max_tokens=1024, max_calls=200, canaries=None,
-                 keep_reply_heads=0):
+                 keep_reply_heads=0, temperature=None, seed=None):
         self.model = model
+        self.sampling = {k: v for k, v in (("temperature", temperature), ("seed", seed)) if v is not None}  # forced when set
         self.names = {model, model.split(":")[0], model if ":" in model else model + ":latest"}
         self.max_body, self.max_tokens, self.max_calls = max_body, max_tokens, max_calls
         self.canaries = dict(canaries or {})
@@ -131,9 +132,11 @@ class ModelPolicy:
                     if key in req:
                         req[key] = min(int(req[key] or self.max_tokens), self.max_tokens)
                 req.setdefault("max_tokens", self.max_tokens)
+                req.update(self.sampling)
             else:
                 opts = req.get("options") if isinstance(req.get("options"), dict) else {}
                 opts["num_predict"] = min(int(opts.get("num_predict") or self.max_tokens), self.max_tokens)
+                opts.update(self.sampling)
                 req["options"] = opts
         except (TypeError, ValueError):
             return self._refuse(400, "bad token limit", method, path, model=model)
@@ -145,6 +148,8 @@ class ModelPolicy:
                 "tools_offered": len(req.get("tools") or []) if isinstance(req.get("tools"), list) else 0,
                 "stream": bool(req.get("stream")),
                 "reply_cap": req.get("max_tokens") if CHAT_PATHS[path] == "openai" else req["options"]["num_predict"]}
+        if self.sampling:
+            meta["sampling"] = dict(self.sampling)
         return Decision(200, True, json.dumps(req).encode(), meta)
 
     def record(self, meta, reply_head=b"", reply_bytes=0, upstream_status=None, error=None):
